@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Калькулятор металлопроката</title>
+<meta name="description" content="Онлайн калькулятор веса металлопроката. Труба, арматура, лист, уголок, швеллер, двутавр. ГОСТ, ASME, EN.">
 <style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0b1a0f;overflow-x:hidden}</style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -15,29 +16,56 @@
 const { useState, useMemo, useCallback, useEffect, useRef } = React;
 
 const METALS = {
-  steel: { name: "Сталь", density: 7850 },
-  stainless: { name: "Нержавейка", density: 7900 },
-  aluminum: { name: "Алюминий", density: 2700 },
-  copper: { name: "Медь", density: 8900 },
-  brass: { name: "Латунь", density: 8500 },
-  bronze: { name: "Бронза", density: 8800 },
-  titanium: { name: "Титан", density: 4505 },
-  cast_iron: { name: "Чугун", density: 7200 },
-  zinc: { name: "Цинк", density: 7130 },
-  lead: { name: "Свинец", density: 11340 },
+  /* ── Углеродистая сталь ── */
+  steel: { name: "Сталь углеродистая", density: 7850, group: "Сталь", search: "ст3 ст20 09г2с a106 a333 a53 carbon cs" },
+  /* ── Нержавеющая — аустенитная ── */
+  ss304: { name: "304 / 304L", density: 7930, group: "Нержавейка", search: "08х18н10 aisi304 1.4301 1.4307 tp304 a312 a240 s30400 s30403" },
+  ss321: { name: "321 / 321H", density: 7920, group: "Нержавейка", search: "12х18н10т aisi321 1.4541 tp321 s32100" },
+  ss316: { name: "316 / 316L", density: 7980, group: "Нержавейка", search: "08х17н13м2 10х17н13м2т aisi316 1.4401 1.4404 tp316 s31600 s31603" },
+  ss310: { name: "310 / 310S", density: 7980, group: "Нержавейка", search: "10х23н18 aisi310 1.4845 tp310 s31000 s31008" },
+  ss347: { name: "347 / 347H", density: 7960, group: "Нержавейка", search: "08х18н12б aisi347 1.4550 tp347 s34700" },
+  ss904: { name: "904L", density: 7990, group: "Нержавейка", search: "06хн28мдт 1.4539 n08904 s08904" },
+  /* ── Нержавеющая — дуплекс ── */
+  dup2205: { name: "Дуплекс 2205", density: 7800, group: "Дуплекс", search: "s32205 s31803 1.4462 saf2205 duplex" },
+  dup2507: { name: "Супердуплекс 2507", density: 7800, group: "Дуплекс", search: "s32750 1.4410 saf2507 superduplex" },
+  /* ── Нержавеющая — ферритная/мартенситная ── */
+  ss430: { name: "430 (ферритная)", density: 7700, group: "Нержавейка", search: "12х17 aisi430 1.4016 s43000 ferrit" },
+  ss420: { name: "420 (мартенситная)", density: 7750, group: "Нержавейка", search: "20х13 aisi420 1.4021 s42000 martensit" },
+  /* ── Никелевые сплавы ── */
+  nickel200: { name: "Nickel 200", density: 8890, group: "Никель", search: "n02200 нп2 2.4060 никель чистый" },
+  monel400: { name: "Monel 400", density: 8800, group: "Никель", search: "n04400 монель нмжмц 2.4360" },
+  inconel600: { name: "Inconel 600", density: 8470, group: "Никель", search: "n06600 хн78т инконель 2.4816" },
+  inconel625: { name: "Inconel 625", density: 8440, group: "Никель", search: "n06625 хн75мбтю инконель 2.4856" },
+  inconel718: { name: "Inconel 718", density: 8190, group: "Никель", search: "n07718 хн45мвтюбр инконель 2.4668" },
+  incoloy800: { name: "Incoloy 800H/HT", density: 7940, group: "Никель", search: "n08800 n08810 n08811 хн32т инколой 1.4876 1.4958 1.4959" },
+  incoloy825: { name: "Incoloy 825", density: 8140, group: "Никель", search: "n08825 хн38вт инколой 2.4858" },
+  hastC276: { name: "Hastelloy C-276", density: 8890, group: "Никель", search: "n10276 хн65мв хастеллой 2.4819" },
+  hastC22: { name: "Hastelloy C-22", density: 8690, group: "Никель", search: "n06022 хастеллой 2.4602" },
+  /* ── Цветные металлы ── */
+  aluminum: { name: "Алюминий", density: 2710, group: "Цветные", search: "ал амг 6061 6063 5052 д16 ад31" },
+  copper: { name: "Медь", density: 8900, group: "Цветные", search: "м1 м2 cu c11000" },
+  brass: { name: "Латунь", density: 8500, group: "Цветные", search: "л63 л68 лс59 cuzn" },
+  bronze: { name: "Бронза", density: 8800, group: "Цветные", search: "браж броф бронз cusnzn" },
+  titanium_gr2: { name: "Титан Grade 2", density: 4510, group: "Цветные", search: "вт1-0 grade2 r50400 3.7035 титан" },
+  titanium_gr5: { name: "Титан Grade 5", density: 4430, group: "Цветные", search: "вт6 grade5 r56400 3.7165 ti6al4v титан" },
+  cast_iron: { name: "Чугун", density: 7200, group: "Цветные", search: "сч чугун cast iron" },
+  zinc: { name: "Цинк", density: 7130, group: "Цветные", search: "цинк zinc zn" },
+  lead: { name: "Свинец", density: 11340, group: "Цветные", search: "свинец lead pb" },
 };
 
+const METAL_GROUPS = ["Сталь", "Нержавейка", "Дуплекс", "Никель", "Цветные"];
+
 const PROFILES = [
+  { id: "rebar", name: "Арматура", short: "Армат.", dLen: 12 },
   { id: "pipe_round", name: "Труба круглая", short: "Труба кр.", dLen: 12 },
   { id: "pipe_profile", name: "Труба профильная", short: "Труба пр.", dLen: 12 },
-  { id: "circle", name: "Круг / Пруток", short: "Круг", dLen: 6 },
-  { id: "rebar", name: "Арматура", short: "Армат.", dLen: 12 },
-  { id: "square_bar", name: "Квадрат", short: "Квадрат", dLen: 6 },
-  { id: "hex_bar", name: "Шестигранник", short: "Шестигр.", dLen: 6 },
   { id: "sheet", name: "Лист / Полоса", short: "Лист", dLen: null },
   { id: "angle", name: "Уголок", short: "Уголок", dLen: 12 },
   { id: "channel", name: "Швеллер", short: "Швеллер", dLen: 12 },
   { id: "beam", name: "Двутавр", short: "Двутавр", dLen: 12 },
+  { id: "circle", name: "Круг / Пруток", short: "Круг", dLen: 6 },
+  { id: "square_bar", name: "Квадрат", short: "Квадрат", dLen: 6 },
+  { id: "hex_bar", name: "Шестигранник", short: "Шестигр.", dLen: 6 },
 ];
 
 const PARAM_DEFS = {
@@ -49,7 +77,8 @@ const PARAM_DEFS = {
   width: { label: "Ширина", unit: "мм", sym: "W" },
   thickness: { label: "Толщина", unit: "мм", sym: "t" },
   height: { label: "Высота", unit: "мм", sym: "H" },
-  shelfWidth: { label: "Полка", unit: "мм", sym: "b" },
+  shelfWidth: { label: "Полка A", unit: "мм", sym: "a" },
+  shelfB: { label: "Полка B", unit: "мм", sym: "b" },
   webThickness: { label: "Стенка", unit: "мм", sym: "s" },
   flangeThickness: { label: "Полка толщ.", unit: "мм", sym: "t" },
 };
@@ -62,7 +91,7 @@ const PARAMS_MAP = {
   square_bar: ["side"],
   hex_bar: ["side"],
   sheet: ["width", "thickness"],
-  angle: ["shelfWidth", "thickness"],
+  angle: ["shelfWidth", "shelfB", "thickness"],
   channel: ["height", "shelfWidth", "webThickness", "flangeThickness"],
   beam: ["height", "shelfWidth", "webThickness", "flangeThickness"],
 };
@@ -70,17 +99,105 @@ const PARAMS_MAP = {
 function calcArea(id, p) {
   switch (id) {
     case "pipe_round": { const R = p.diameter / 2, r = R - p.wall; return r <= 0 ? Math.PI * R * R : Math.PI * (R * R - r * r); }
-    case "pipe_profile": { const o = p.sideA * p.sideB, iA = p.sideA - 2 * p.wall, iB = p.sideB - 2 * p.wall; return (iA <= 0 || iB <= 0) ? o : o - iA * iB; }
+    case "pipe_profile": { const A = p.sideA, B = p.sideB, t = p.wall; const R = 2*t, r = R - t; const str = 2*(Math.max(0, A - 2*R) + Math.max(0, B - 2*R))*t; return str + Math.PI*(R*R - r*r); }
     case "circle": return Math.PI * (p.diameter / 2) ** 2;
-    case "rebar": return Math.PI * (p.diameter / 2) ** 2 * 1.02;
+    case "rebar": return Math.PI * (p.diameter / 2) ** 2;
     case "square_bar": return p.side * p.side;
-    case "hex_bar": return (3 * Math.sqrt(3) / 2) * (p.side / 2) ** 2;
+    case "hex_bar": return (Math.sqrt(3) / 2) * p.side ** 2;
     case "sheet": return p.width * p.thickness;
-    case "angle": { const t = p.thickness, b = p.shelfWidth; return 2 * b * t - t * t + ((Math.PI / 4) * t * t - t * t) - 2 * ((t / 2) * (t / 2) - (Math.PI / 4) * (t / 2) * (t / 2)); }
-    case "channel": { const { height: H, shelfWidth: b, webThickness: tw, flangeThickness: tf } = p; const r = Math.min(tw, tf) * 0.5; return (H - 2 * tf) * tw + 2 * b * tf - 2 * (1 - Math.PI / 4) * r * r; }
-    case "beam": { const { height: H, shelfWidth: b, webThickness: tw, flangeThickness: tf } = p; const r = Math.min(tw, tf) * 0.5; return (H - 2 * tf) * tw + 2 * b * tf - 4 * (1 - Math.PI / 4) * r * r; }
+    case "angle": { const t = p.thickness, a = p.shelfWidth, b = p.shelfB || a; const Rmap = {20:2.4,25:2.1,28:2.4,30:2.4,32:2.8,35:2.8,40:3.2,45:3.1,50:3.4,56:4.0,60:4.4,63:4.4,65:4.4,70:4.9,75:5.6,80:5.6,90:6.3,100:7.5,110:7.5,120:9.0,125:9.0,140:10.0,150:10.0,160:11.0,180:12.0,200:13.0,250:16.0}; const R = Rmap[a] || (a * 0.07); return (a + b - t) * t + (4 - Math.PI) / 2 * R * R; }
+    case "channel": { const { height: H, shelfWidth: b, webThickness: tw, flangeThickness: tf } = p; const R = 0.024 * H + 4.8, r = 0.01 * H + 2.0; return (H - 2 * tf) * tw + 2 * b * tf + (4 - Math.PI) / 2 * R * R - (4 - Math.PI) * r * r; }
+    case "beam": { const { height: H, shelfWidth: b, webThickness: tw, flangeThickness: tf } = p; const R = 1.7 * tw; return (H - 2 * tf) * tw + 2 * b * tf + (4 - Math.PI) * R * R; }
     default: return 0;
   }
+}
+
+function MetalPicker({ value, onChange, mob }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const ref = useRef(null);
+  const cur = METALS[value];
+
+  useEffect(() => {
+    if (!open) return;
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", h); document.addEventListener("touchstart", h);
+    return () => { document.removeEventListener("mousedown", h); document.removeEventListener("touchstart", h); };
+  }, [open]);
+
+  const filtered = useMemo(() => {
+    const ql = q.toLowerCase().replace(/[^a-zа-яё0-9.\-]/g, "");
+    if (!ql) return null;
+    return Object.entries(METALS).filter(([k, m]) => {
+      const hay = (m.name + " " + m.group + " " + (m.search || "") + " " + m.density).toLowerCase();
+      return hay.includes(ql);
+    });
+  }, [q]);
+
+  const select = (k) => { onChange(k); setOpen(false); setQ(""); };
+
+  const groupColor = { "Сталь": "#a0aec0", "Нержавейка": "#52b788", "Дуплекс": "#e8a838", "Никель": "#c084fc", "Цветные": "#60a5fa" };
+
+  const renderItem = ([k, m]) => (
+    <div key={k} onClick={() => select(k)} style={{
+      padding: "8px 12px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center",
+      background: k === value ? "rgba(82,183,136,0.12)" : "transparent", borderLeft: `3px solid ${groupColor[m.group] || "#52b788"}`,
+    }}
+      onMouseEnter={e => { e.currentTarget.style.background = "rgba(82,183,136,0.08)"; }}
+      onMouseLeave={e => { e.currentTarget.style.background = k === value ? "rgba(82,183,136,0.12)" : "transparent"; }}>
+      <span style={{ fontSize: 13, fontWeight: k === value ? 700 : 400 }}>{m.name}</span>
+      <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", fontFamily: "'JetBrains Mono',monospace" }}>{m.density}</span>
+    </div>
+  );
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <div onClick={() => { setOpen(!open); setQ(""); }} style={{
+        width: "100%", padding: "10px 12px", background: "rgba(255,255,255,0.06)", border: open ? "1px solid rgba(82,183,136,0.5)" : "1px solid rgba(255,255,255,0.1)",
+        borderRadius: 8, color: "#fff", fontSize: 14, fontFamily: "'Nunito',sans-serif", fontWeight: 600, cursor: "pointer",
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+      }}>
+        <span>
+          <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 4, background: groupColor[cur?.group] || "#52b788", marginRight: 8 }}></span>
+          {cur?.name}
+          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginLeft: 6 }}>({cur?.density} кг/м³)</span>
+        </span>
+        <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>{open ? "▲" : "▼"}</span>
+      </div>
+
+      {open && (
+        <div style={{
+          position: "absolute", top: "100%", left: 0, right: 0, zIndex: 999,
+          background: "#1a2f22", border: "1px solid rgba(82,183,136,0.3)", borderRadius: 10,
+          marginTop: 4, maxHeight: mob ? "50vh" : 360, overflow: "hidden", display: "flex", flexDirection: "column",
+          boxShadow: "0 12px 40px rgba(0,0,0,0.5)",
+        }}>
+          <div style={{ padding: "8px 10px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+            <input autoFocus type="text" value={q} onChange={e => setQ(e.target.value)}
+              placeholder="🔍 316, Inconel, дуплекс, 7850..."
+              style={{
+                width: "100%", padding: "8px 10px", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: 6, color: "#fff", fontSize: 13, fontFamily: "'Nunito',sans-serif", outline: "none",
+              }} />
+          </div>
+          <div style={{ overflowY: "auto", flex: 1 }}>
+            {filtered ? (
+              filtered.length > 0 ? filtered.map(renderItem) : (
+                <div style={{ padding: 16, textAlign: "center", color: "rgba(255,255,255,0.3)", fontSize: 12 }}>Не найдено</div>
+              )
+            ) : (
+              METAL_GROUPS.map(g => (
+                <div key={g}>
+                  <div style={{ padding: "6px 12px", fontSize: 10, fontWeight: 800, color: groupColor[g] || "#52b788", textTransform: "uppercase", letterSpacing: "0.1em", background: "rgba(255,255,255,0.02)" }}>{g}</div>
+                  {Object.entries(METALS).filter(([, m]) => m.group === g).map(renderItem)}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ProfileIcon({ id, active }) {
@@ -125,7 +242,7 @@ function TechDrawing({ profileId, size }) {
     square_bar: <g><rect x={44} y={48} width={72} height={72} {...hf} /><line x1={44} y1={132} x2={116} y2={132} {...dm} /><line x1={44} y1={120} x2={44} y2={136} {...dl} /><line x1={116} y1={120} x2={116} y2={136} {...dl} /><text x={M} y={145} {...lb}>a</text></g>,
     hex_bar: (()=>{const r=40;const pts=[0,1,2,3,4,5].map(i=>{const a=Math.PI/6+(i*Math.PI)/3;return`${M+r*Math.cos(a)},${MY+r*Math.sin(a)}`;}).join(" ");const xO=r*Math.cos(Math.PI/6);return <g><polygon points={pts} {...hf} /><line x1={M-xO} y1={134} x2={M+xO} y2={134} {...dm} /><line x1={M-xO} y1={MY+r*0.5+2} x2={M-xO} y2={138} {...dl} /><line x1={M+xO} y1={MY+r*0.5+2} x2={M+xO} y2={138} {...dl} /><text x={M} y={147} {...lb}>S</text></g>;})(),
     sheet: <g><rect x={20} y={74} width={120} height={20} {...hf} /><line x1={20} y1={106} x2={140} y2={106} {...dm} /><line x1={20} y1={94} x2={20} y2={110} {...dl} /><line x1={140} y1={94} x2={140} y2={110} {...dl} /><text x={M} y={119} {...lb}>W</text><line x1={150} y1={74} x2={150} y2={94} {...dm} /><line x1={140} y1={74} x2={154} y2={74} {...dl} /><line x1={140} y1={94} x2={154} y2={94} {...dl} /><text x={150} y={69} {...ls}>t</text></g>,
-    angle: <g><path d={`M52 40L52 120L120 120L120 108L65 108L65 40Z`} {...hf} /><line x1={52} y1={134} x2={120} y2={134} {...dm} /><line x1={52} y1={120} x2={52} y2={138} {...dl} /><line x1={120} y1={120} x2={120} y2={138} {...dl} /><text x={86} y={147} {...lb}>b</text><line x1={52} y1={30} x2={65} y2={30} {...dm} /><line x1={52} y1={40} x2={52} y2={26} {...dl} /><line x1={65} y1={40} x2={65} y2={26} {...dl} /><text x={59} y={25} {...ls}>t</text></g>,
+    angle: <g><path d={`M52 40L52 120L120 120L120 108L65 108L65 40Z`} {...hf} /><line x1={52} y1={134} x2={120} y2={134} {...dm} /><line x1={52} y1={120} x2={52} y2={138} {...dl} /><line x1={120} y1={120} x2={120} y2={138} {...dl} /><text x={86} y={147} {...lb}>b</text><line x1={38} y1={40} x2={38} y2={120} {...dm} /><line x1={52} y1={40} x2={34} y2={40} {...dl} /><line x1={52} y1={120} x2={34} y2={120} {...dl} /><text x={30} y={82} {...ls}>a</text><line x1={52} y1={30} x2={65} y2={30} {...dm} /><line x1={52} y1={40} x2={52} y2={26} {...dl} /><line x1={65} y1={40} x2={65} y2={26} {...dl} /><text x={59} y={25} {...ls}>t</text></g>,
     channel: <g><path d={`M58 38L108 38L108 50L72 50L72 110L108 110L108 122L58 122Z`} {...hf} /><line x1={44} y1={38} x2={44} y2={122} {...dm} /><line x1={58} y1={38} x2={40} y2={38} {...dl} /><line x1={58} y1={122} x2={40} y2={122} {...dl} /><text x={34} y={84} {...lb}>H</text><line x1={58} y1={26} x2={108} y2={26} {...dm} /><line x1={58} y1={38} x2={58} y2={22} {...dl} /><line x1={108} y1={38} x2={108} y2={22} {...dl} /><text x={83} y={22} {...lb}>b</text><line x1={58} y1={80} x2={72} y2={80} {...dm} /><text x={65} y={76} {...ls}>s</text><line x1={120} y1={110} x2={120} y2={122} {...dm} /><line x1={108} y1={110} x2={124} y2={110} {...dl} /><line x1={108} y1={122} x2={124} y2={122} {...dl} /><text x={130} y={119} {...ls}>t</text></g>,
     beam: <g><path d={`M50 38L110 38L110 50L86 50L86 110L110 110L110 122L50 122L50 110L74 110L74 50L50 50Z`} {...hf} /><line x1={36} y1={38} x2={36} y2={122} {...dm} /><line x1={50} y1={38} x2={32} y2={38} {...dl} /><line x1={50} y1={122} x2={32} y2={122} {...dl} /><text x={26} y={84} {...lb}>H</text><line x1={50} y1={26} x2={110} y2={26} {...dm} /><line x1={50} y1={38} x2={50} y2={22} {...dl} /><line x1={110} y1={38} x2={110} y2={22} {...dl} /><text x={M} y={22} {...lb}>b</text><line x1={74} y1={80} x2={86} y2={80} {...dm} /><text x={M} y={76} {...ls}>s</text><line x1={122} y1={110} x2={122} y2={122} {...dm} /><line x1={110} y1={110} x2={126} y2={110} {...dl} /><line x1={110} y1={122} x2={126} y2={122} {...dl} /><text x={132} y={119} {...ls}>t</text></g>,
   };
@@ -174,12 +291,29 @@ function MetalCalculator() {
 
   useEffect(() => { setParams({}); setWeight(""); setLength(prof?.dLen ? String(prof.dLen) : ""); setLastE("length"); setTimeout(() => fr.current?.focus(), 50); }, [pid]);
 
-  const setP = useCallback((k, v) => setParams(prev => ({ ...prev, [k]: v })), []);
-  const allF = pKeys.every(k => parseFloat(params[k]) > 0);
-  const wpm = useMemo(() => { if (!allF) return 0; const np = {}; pKeys.forEach(k => { np[k] = parseFloat(params[k]); }); const a = calcArea(pid, np); return a > 0 ? (a / 1e6) * dens : 0; }, [pid, params, dens, allF, pKeys]);
+  const fixNum = (v) => v.replace(/[,،٫⸴]/g, ".").replace(/\s/g, "");
+  /* Auto-sync pairs: B follows A until user manually edits B */
+  const syncPairs = { shelfWidth: "shelfB", sideA: "sideB" }; /* A → B */
+  const syncTargets = new Set(["shelfB", "sideB"]); /* B fields */
+  const [bEdited, setBEdited] = useState({});
+  const setP = useCallback((k, v) => {
+    const fv = fixNum(v);
+    setParams(prev => {
+      const next = { ...prev, [k]: fv };
+      /* If A changed and B not manually edited → sync B = A */
+      if (syncPairs[k] && !bEdited[syncPairs[k]]) next[syncPairs[k]] = fv;
+      /* If B changed → mark as manually edited */
+      if (syncTargets.has(k)) setBEdited(prev2 => ({ ...prev2, [k]: true }));
+      return next;
+    });
+  }, [bEdited]);
+  /* Reset B-edited flags when switching profiles */
+  useEffect(() => { setBEdited({}); }, [pid]);
+  const allF = pKeys.every(k => { if (syncTargets.has(k)) return true; return parseFloat(params[k]) > 0; });
+  const wpm = useMemo(() => { if (!allF) return 0; const np = {}; pKeys.forEach(k => { const v = parseFloat(params[k]); if (v > 0) { np[k] = v; } else if (syncTargets.has(k)) { /* B defaults to A */ const aKey = Object.entries(syncPairs).find(([, b]) => b === k)?.[0]; np[k] = parseFloat(params[aKey]) || 0; } else { np[k] = 0; } }); const a = calcArea(pid, np); return a > 0 ? (a / 1e6) * dens : 0; }, [pid, params, dens, allF, pKeys]);
 
-  const hLen = (v) => { setLength(v); setLastE("length"); if (wpm > 0 && parseFloat(v) > 0) setWeight((wpm * parseFloat(v)).toFixed(2)); else setWeight(""); };
-  const hWt = (v) => { setWeight(v); setLastE("weight"); if (wpm > 0 && parseFloat(v) > 0) setLength((parseFloat(v) / wpm).toFixed(3)); else setLength(""); };
+  const hLen = (v) => { const v2 = fixNum(v); setLength(v2); setLastE("length"); if (wpm > 0 && parseFloat(v2) > 0) setWeight((wpm * parseFloat(v2)).toFixed(2)); else setWeight(""); };
+  const hWt = (v) => { const v2 = fixNum(v); setWeight(v2); setLastE("weight"); if (wpm > 0 && parseFloat(v2) > 0) setLength((parseFloat(v2) / wpm).toFixed(3)); else setLength(""); };
   useEffect(() => { if (wpm <= 0) return; if (lastE === "length" && parseFloat(length) > 0) setWeight((wpm * parseFloat(length)).toFixed(2)); else if (lastE === "weight" && parseFloat(weight) > 0) setLength((parseFloat(weight) / wpm).toFixed(3)); }, [wpm]);
 
   const canAdd = parseFloat(length) > 0 && parseFloat(weight) > 0 && wpm > 0;
@@ -244,11 +378,27 @@ function MetalCalculator() {
   /* Detect metal from description */
   const detectMetal = (desc) => {
     const d = desc.toLowerCase();
-    if (d.includes("нерж") || d.includes("stainless") || d.includes("ss") || /a182|a312|a358|a240|tp304|tp316|f316|f321|310s|304l|316l/i.test(desc)) return "stainless";
+    /* Nickel alloys */
+    if (/inconel|инконель/i.test(desc)) { if (/718/i.test(desc)) return "inconel718"; if (/600/i.test(desc)) return "inconel600"; return "inconel625"; }
+    if (/monel|монель/i.test(desc)) return "monel400";
+    if (/hastelloy|хастеллой/i.test(desc)) { if (/c-?22/i.test(desc)) return "hastC22"; return "hastC276"; }
+    if (/incoloy|инколой/i.test(desc)) { if (/825/i.test(desc)) return "incoloy825"; return "incoloy800"; }
+    if (/n06625|n07718|n06600|n10276|n08825/i.test(desc)) return "inconel625";
+    /* Duplex */
+    if (/duplex|дуплекс|2205|s32205|s31803/i.test(desc)) return "dup2205";
+    if (/superduplex|2507|s32750/i.test(desc)) return "dup2507";
+    /* Specific stainless grades */
+    if (/316|08х17н13м2/i.test(desc)) return "ss316";
+    if (/310s?|10х23н18/i.test(desc)) return "ss310";
+    if (/321|12х18н10т/i.test(desc)) return "ss321";
+    if (/347|08х18н12б/i.test(desc)) return "ss347";
+    if (/304|08х18н10[^т]/i.test(desc)) return "ss304";
+    if (d.includes("нерж") || d.includes("stainless") || /tp304|tp316|f316|f321/i.test(desc)) return "ss304";
+    /* Other */
     if (d.includes("алюмин") || d.includes("alumin") || /6061|6063|5052/i.test(desc)) return "aluminum";
     if (d.includes("медь") || d.includes("copper")) return "copper";
     if (d.includes("латунь") || d.includes("brass")) return "brass";
-    if (d.includes("титан") || d.includes("titan")) return "titanium";
+    if (d.includes("титан") || d.includes("titan")) return "titanium_gr2";
     return "steel";
   };
 
@@ -860,12 +1010,10 @@ Example output:
         <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
           <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)", padding: mob ? "12px" : "14px 16px" }}>
 
-            {/* Metal */}
-            <div style={{ marginBottom: 12 }}>
-              <label style={{ ...lbl, color: "#52b788", textTransform: "uppercase", letterSpacing: "0.08em", fontSize: 10 }}>Металл</label>
-              <select value={metal} onChange={e => setMetal(e.target.value)} style={{ width: "100%", padding: "10px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#fff", fontSize: 15, fontFamily: "'Nunito',sans-serif", fontWeight: 600, cursor: "pointer" }}>
-                {Object.entries(METALS).map(([k, v]) => <option key={k} value={k} style={{ background: "#1a2f22" }}>{v.name} ({v.density} кг/м³)</option>)}
-              </select>
+            {/* Metal — searchable autocomplete */}
+            <div style={{ marginBottom: 12, position: "relative" }}>
+              <label style={{ ...lbl, color: "#52b788", textTransform: "uppercase", letterSpacing: "0.08em", fontSize: 10 }}>МЕТАЛЛ</label>
+              <MetalPicker value={metal} onChange={setMetal} mob={mob} />
             </div>
 
             {/* Drawing + Fields — stacks vertically on mobile */}
@@ -878,10 +1026,10 @@ Example output:
               <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%" }}>
                 {/* Dimension inputs — always 2 cols, 1 col if single param */}
                 <div style={{ display: "grid", gridTemplateColumns: pKeys.length === 1 ? "1fr" : "1fr 1fr", gap: 8 }}>
-                  {pKeys.map((k, i) => { const d = PARAM_DEFS[k]; return (
+                  {pKeys.map((k, i) => { const d = PARAM_DEFS[k]; const ph = syncTargets.has(k) ? (params[Object.entries(syncPairs).find(([,b]) => b === k)?.[0]] || "= " + (k === "shelfB" ? "a" : "A")) : "0"; const symO = (k === "shelfWidth" && (pid === "channel" || pid === "beam")) ? "b" : d.sym; const lblO = (k === "shelfWidth" && (pid === "channel" || pid === "beam")) ? "Полка" : d.label; return (
                     <div key={k}>
-                      <label style={lbl}><span style={{ color: "#52b788", fontWeight: 700, marginRight: 2 }}>{d.sym}</span> {d.label}, {d.unit}</label>
-                      <input ref={i === 0 ? fr : null} type="text" inputMode="decimal" pattern="[0-9.,]*" min="0" step="any" style={inp} value={params[k] || ""} onChange={e => setP(k, e.target.value)} placeholder="0" />
+                      <label style={lbl}><span style={{ color: "#52b788", fontWeight: 700, marginRight: 2 }}>{symO}</span> {lblO}, {d.unit}</label>
+                      <input ref={i === 0 ? fr : null} type="text" inputMode="decimal" pattern="[0-9.,]*" min="0" step="any" style={inp} value={params[k] || ""} onChange={e => setP(k, e.target.value)} placeholder={ph} />
                     </div>
                   ); })}
                 </div>
