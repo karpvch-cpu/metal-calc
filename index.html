@@ -1061,7 +1061,7 @@ Example output:
                     <label style={lbl}>Шт</label>
                     <input type="text" inputMode="numeric" pattern="[0-9]*" min="1" step="1" style={inp} value={qty} onChange={e => setQty(e.target.value)} />
                   </div>
-                  <button onClick={addH} disabled={!canAdd} style={{ ...btn(canAdd, "linear-gradient(135deg,#e8a838,#d4882a)", "#1a1a1a"), flex: 1, minWidth: 90 }}>+ Добавить</button>
+                  <button onClick={addH} disabled={!canAdd} style={{ ...btn(canAdd, "linear-gradient(135deg,#e8a838,#d4882a)", "#1a1a1a"), flex: 1, minWidth: 90 }}>↓ В список</button>
                   {/* Import button hidden — TODO: fix AI import errors */}
                 </div>
 
