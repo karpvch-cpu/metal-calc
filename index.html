@@ -4,22 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Калькулятор металлопроката</title>
-<meta name="description" content="Расчёт веса металлопроката: трубы, листы, арматура, уголки, швеллеры, двутавры">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚙️</text></svg>">
-<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
-<style>
-  html, body { margin: 0; padding: 0; background: #0b1a0f; }
-</style>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0b1a0f;overflow-x:hidden}</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
 </head>
 <body>
 <div id="root"></div>
 <script type="text/babel">
 const { useState, useMemo, useCallback, useEffect, useRef } = React;
-
-
 
 const METALS = {
   steel: { name: "Сталь", density: 7850 },
@@ -491,7 +484,7 @@ function MetalCalculator() {
         return;
       }
       /* XLSX */
-      const XLSX = window.XLSX;
+      const XLSX = await import("sheetjs");
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: "array" });
       let allText = "";
@@ -921,7 +914,7 @@ Example output:
                     <input type="text" inputMode="numeric" pattern="[0-9]*" min="1" step="1" style={inp} value={qty} onChange={e => setQty(e.target.value)} />
                   </div>
                   <button onClick={addH} disabled={!canAdd} style={{ ...btn(canAdd, "linear-gradient(135deg,#e8a838,#d4882a)", "#1a1a1a"), flex: 1, minWidth: 90 }}>+ Добавить</button>
-                  <button onClick={() => setShowImport(true)} style={{ padding: mob ? "12px 14px" : "10px 14px", background: "rgba(82,183,136,0.1)", border: "1px solid rgba(82,183,136,0.3)", borderRadius: 8, color: "#52b788", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "'Nunito',sans-serif", WebkitAppearance: "none" }}>📥</button>
+                  {/* Import button hidden — TODO: fix AI import errors */}
                 </div>
 
                 {/* Qty total */}
@@ -1170,8 +1163,7 @@ Example output:
   );
 }
 
-
-ReactDOM.createRoot(document.getElementById("root")).render(<MetalCalculator />);
+ReactDOM.createRoot(document.getElementById('root')).render(<MetalCalculator />);
 </script>
 </body>
 </html>
