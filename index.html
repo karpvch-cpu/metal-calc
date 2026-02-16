@@ -75,6 +75,7 @@ const PARAM_DEFS = {
   sideB: { label: "Сторона B", unit: "мм", sym: "B" },
   side: { label: "Сторона", unit: "мм", sym: "a" },
   width: { label: "Ширина", unit: "мм", sym: "W" },
+  sheetLength: { label: "Длина", unit: "мм", sym: "L" },
   thickness: { label: "Толщина", unit: "мм", sym: "t" },
   height: { label: "Высота", unit: "мм", sym: "H" },
   shelfWidth: { label: "Полка A", unit: "мм", sym: "a" },
@@ -90,7 +91,7 @@ const PARAMS_MAP = {
   rebar: ["diameter"],
   square_bar: ["side"],
   hex_bar: ["side"],
-  sheet: ["width", "thickness"],
+  sheet: ["width", "sheetLength", "thickness"],
   angle: ["shelfWidth", "shelfB", "thickness"],
   channel: ["height", "shelfWidth", "webThickness", "flangeThickness"],
   beam: ["height", "shelfWidth", "webThickness", "flangeThickness"],
@@ -241,7 +242,7 @@ function TechDrawing({ profileId, size }) {
     rebar: <g><circle cx={M} cy={MY} r={38} {...hf} />{[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15].map(i=>{const a=(i/16)*Math.PI*2;return <line key={i} x1={M+36*Math.cos(a)} y1={MY+36*Math.sin(a)} x2={M+44*Math.cos(a)} y2={MY+44*Math.sin(a)} stroke="#52b788" strokeWidth="1.8" strokeLinecap="round" />;})}<line x1={M-44} y1={30} x2={M+44} y2={30} {...dm} /><line x1={M-44} y1={40} x2={M-44} y2={26} {...dl} /><line x1={M+44} y1={40} x2={M+44} y2={26} {...dl} /><text x={M} y={25} {...lb}>D</text></g>,
     square_bar: <g><rect x={44} y={48} width={72} height={72} {...hf} /><line x1={44} y1={132} x2={116} y2={132} {...dm} /><line x1={44} y1={120} x2={44} y2={136} {...dl} /><line x1={116} y1={120} x2={116} y2={136} {...dl} /><text x={M} y={145} {...lb}>a</text></g>,
     hex_bar: (()=>{const r=40;const pts=[0,1,2,3,4,5].map(i=>{const a=Math.PI/6+(i*Math.PI)/3;return`${M+r*Math.cos(a)},${MY+r*Math.sin(a)}`;}).join(" ");const xO=r*Math.cos(Math.PI/6);return <g><polygon points={pts} {...hf} /><line x1={M-xO} y1={134} x2={M+xO} y2={134} {...dm} /><line x1={M-xO} y1={MY+r*0.5+2} x2={M-xO} y2={138} {...dl} /><line x1={M+xO} y1={MY+r*0.5+2} x2={M+xO} y2={138} {...dl} /><text x={M} y={147} {...lb}>S</text></g>;})(),
-    sheet: <g><rect x={20} y={74} width={120} height={20} {...hf} /><line x1={20} y1={106} x2={140} y2={106} {...dm} /><line x1={20} y1={94} x2={20} y2={110} {...dl} /><line x1={140} y1={94} x2={140} y2={110} {...dl} /><text x={M} y={119} {...lb}>W</text><line x1={150} y1={74} x2={150} y2={94} {...dm} /><line x1={140} y1={74} x2={154} y2={74} {...dl} /><line x1={140} y1={94} x2={154} y2={94} {...dl} /><text x={150} y={69} {...ls}>t</text></g>,
+    sheet: <g><rect x={20} y={74} width={120} height={20} {...hf} /><line x1={20} y1={106} x2={140} y2={106} {...dm} /><line x1={20} y1={94} x2={20} y2={110} {...dl} /><line x1={140} y1={94} x2={140} y2={110} {...dl} /><text x={M} y={119} {...lb}>W</text><line x1={20} y1={64} x2={140} y2={64} {...dm} /><line x1={20} y1={60} x2={20} y2={74} {...dl} /><line x1={140} y1={60} x2={140} y2={74} {...dl} /><text x={M} y={59} {...ls}>L</text><line x1={150} y1={74} x2={150} y2={94} {...dm} /><line x1={140} y1={74} x2={154} y2={74} {...dl} /><line x1={140} y1={94} x2={154} y2={94} {...dl} /><text x={155} y={87} {...ls}>t</text></g>,
     angle: <g><path d={`M52 40L52 120L120 120L120 108L65 108L65 40Z`} {...hf} /><line x1={52} y1={134} x2={120} y2={134} {...dm} /><line x1={52} y1={120} x2={52} y2={138} {...dl} /><line x1={120} y1={120} x2={120} y2={138} {...dl} /><text x={86} y={147} {...lb}>b</text><line x1={38} y1={40} x2={38} y2={120} {...dm} /><line x1={52} y1={40} x2={34} y2={40} {...dl} /><line x1={52} y1={120} x2={34} y2={120} {...dl} /><text x={30} y={82} {...ls}>a</text><line x1={52} y1={30} x2={65} y2={30} {...dm} /><line x1={52} y1={40} x2={52} y2={26} {...dl} /><line x1={65} y1={40} x2={65} y2={26} {...dl} /><text x={59} y={25} {...ls}>t</text></g>,
     channel: <g><path d={`M58 38L108 38L108 50L72 50L72 110L108 110L108 122L58 122Z`} {...hf} /><line x1={44} y1={38} x2={44} y2={122} {...dm} /><line x1={58} y1={38} x2={40} y2={38} {...dl} /><line x1={58} y1={122} x2={40} y2={122} {...dl} /><text x={34} y={84} {...lb}>H</text><line x1={58} y1={26} x2={108} y2={26} {...dm} /><line x1={58} y1={38} x2={58} y2={22} {...dl} /><line x1={108} y1={38} x2={108} y2={22} {...dl} /><text x={83} y={22} {...lb}>b</text><line x1={58} y1={80} x2={72} y2={80} {...dm} /><text x={65} y={76} {...ls}>s</text><line x1={120} y1={110} x2={120} y2={122} {...dm} /><line x1={108} y1={110} x2={124} y2={110} {...dl} /><line x1={108} y1={122} x2={124} y2={122} {...dl} /><text x={130} y={119} {...ls}>t</text></g>,
     beam: <g><path d={`M50 38L110 38L110 50L86 50L86 110L110 110L110 122L50 122L50 110L74 110L74 50L50 50Z`} {...hf} /><line x1={36} y1={38} x2={36} y2={122} {...dm} /><line x1={50} y1={38} x2={32} y2={38} {...dl} /><line x1={50} y1={122} x2={32} y2={122} {...dl} /><text x={26} y={84} {...lb}>H</text><line x1={50} y1={26} x2={110} y2={26} {...dm} /><line x1={50} y1={38} x2={50} y2={22} {...dl} /><line x1={110} y1={38} x2={110} y2={22} {...dl} /><text x={M} y={22} {...lb}>b</text><line x1={74} y1={80} x2={86} y2={80} {...dm} /><text x={M} y={76} {...ls}>s</text><line x1={122} y1={110} x2={122} y2={122} {...dm} /><line x1={110} y1={110} x2={126} y2={110} {...dl} /><line x1={110} y1={122} x2={126} y2={122} {...dl} /><text x={132} y={119} {...ls}>t</text></g>,
@@ -309,15 +310,43 @@ function MetalCalculator() {
   }, [bEdited]);
   /* Reset B-edited flags when switching profiles */
   useEffect(() => { setBEdited({}); }, [pid]);
-  const allF = pKeys.every(k => { if (syncTargets.has(k)) return true; return parseFloat(params[k]) > 0; });
+  const isSheet = pid === "sheet";
+  const allF = pKeys.every(k => { if (syncTargets.has(k)) return true; if (isSheet && k === "sheetLength") return true; return parseFloat(params[k]) > 0; });
   const wpm = useMemo(() => { if (!allF) return 0; const np = {}; pKeys.forEach(k => { const v = parseFloat(params[k]); if (v > 0) { np[k] = v; } else if (syncTargets.has(k)) { /* B defaults to A */ const aKey = Object.entries(syncPairs).find(([, b]) => b === k)?.[0]; np[k] = parseFloat(params[aKey]) || 0; } else { np[k] = 0; } }); const a = calcArea(pid, np); return a > 0 ? (a / 1e6) * dens : 0; }, [pid, params, dens, allF, pKeys]);
+
+  /* Sheet auto-calc: W×L×t all in mm → weight in kg */
+  const sheetWeight = useMemo(() => {
+    if (!isSheet) return 0;
+    const W = parseFloat(params.width) || 0;
+    const L = parseFloat(params.sheetLength) || 0;
+    const t = parseFloat(params.thickness) || 0;
+    if (W <= 0 || L <= 0 || t <= 0) return 0;
+    return W * L * t * dens / 1e9;
+  }, [isSheet, params.width, params.sheetLength, params.thickness, dens]);
+  /* kg per m² for sheet */
+  const sheetKgM2 = useMemo(() => {
+    if (!isSheet) return 0;
+    const t = parseFloat(params.thickness) || 0;
+    return t > 0 ? t * dens / 1000 : 0;
+  }, [isSheet, params.thickness, dens]);
+  /* Auto-sync sheet length/weight into the shared state */
+  useEffect(() => {
+    if (!isSheet) return;
+    const L = parseFloat(params.sheetLength) || 0;
+    if (L > 0) setLength((L / 1000).toFixed(3));
+    if (sheetWeight > 0) {
+      const q = parseFloat(qty) || 1;
+      setWeight((sheetWeight * q).toFixed(2));
+    } else setWeight("");
+    setLastE("length");
+  }, [isSheet, params.sheetLength, sheetWeight]);
 
   const hLen = (v) => { const v2 = fixNum(v); setLength(v2); setLastE("length"); if (wpm > 0 && parseFloat(v2) > 0) setWeight((wpm * parseFloat(v2)).toFixed(2)); else setWeight(""); };
   const hWt = (v) => { const v2 = fixNum(v); setWeight(v2); setLastE("weight"); if (wpm > 0 && parseFloat(v2) > 0) setLength((parseFloat(v2) / wpm).toFixed(3)); else setLength(""); };
   useEffect(() => { if (wpm <= 0) return; if (lastE === "length" && parseFloat(length) > 0) setWeight((wpm * parseFloat(length)).toFixed(2)); else if (lastE === "weight" && parseFloat(weight) > 0) setLength((parseFloat(weight) / wpm).toFixed(3)); }, [wpm]);
 
-  const canAdd = parseFloat(length) > 0 && parseFloat(weight) > 0 && wpm > 0;
-  const addH = () => { if (!canAdd) return; const q = parseInt(qty) || 1, w = parseFloat(weight); setHist(prev => [{ id: Date.now(), prof: prof.name, metal: METALS[metal].name, metalKey: metal, profileId: pid, params: { ...params }, pk: [...pKeys], len: parseFloat(length), qty: q, tw: w * q }, ...prev]); };
+  const canAdd = isSheet ? (sheetWeight > 0 && parseFloat(weight) > 0) : (parseFloat(length) > 0 && parseFloat(weight) > 0 && wpm > 0);
+  const addH = () => { if (!canAdd) return; const q = isSheet ? (parseFloat(qty) || 1) : (parseInt(qty) || 1), w = parseFloat(weight); setHist(prev => [{ id: Date.now(), prof: prof.name, metal: METALS[metal].name, metalKey: metal, profileId: pid, params: { ...params }, pk: [...pKeys], len: parseFloat(length), qty: q, tw: isSheet ? w : w * q }, ...prev]); };
   const rmH = (id) => setHist(prev => prev.filter(e => e.id !== id));
   const loadH = (e) => { setMetal(e.metalKey); setPid(e.profileId); setTimeout(() => { const np = {}; e.pk.forEach(k => { np[k] = e.params[k]; }); setParams(np); setLength(String(e.len)); setQty(String(e.qty)); setLastE("length"); }, 60); };
   const [editId, setEditId] = useState(null);
@@ -1026,16 +1055,16 @@ Example output:
               <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%" }}>
                 {/* Dimension inputs — always 2 cols, 1 col if single param */}
                 <div style={{ display: "grid", gridTemplateColumns: pKeys.length === 1 ? "1fr" : "1fr 1fr", gap: 8 }}>
-                  {pKeys.map((k, i) => { const d = PARAM_DEFS[k]; const ph = syncTargets.has(k) ? (params[Object.entries(syncPairs).find(([,b]) => b === k)?.[0]] || "= " + (k === "shelfB" ? "a" : "A")) : "0"; const symO = (k === "shelfWidth" && (pid === "channel" || pid === "beam")) ? "b" : d.sym; const lblO = (k === "shelfWidth" && (pid === "channel" || pid === "beam")) ? "Полка" : d.label; return (
-                    <div key={k}>
+                  {pKeys.map((k, i) => { const d = PARAM_DEFS[k]; const ph = syncTargets.has(k) ? (params[Object.entries(syncPairs).find(([,b]) => b === k)?.[0]] || "= " + (k === "shelfB" ? "a" : "A")) : "0"; const symO = (k === "shelfWidth" && (pid === "channel" || pid === "beam")) ? "b" : d.sym; const lblO = (k === "shelfWidth" && (pid === "channel" || pid === "beam")) ? "Полка" : d.label; const spanFull = isSheet && k === "thickness"; return (
+                    <div key={k} style={spanFull ? { gridColumn: "1 / -1" } : undefined}>
                       <label style={lbl}><span style={{ color: "#52b788", fontWeight: 700, marginRight: 2 }}>{symO}</span> {lblO}, {d.unit}</label>
                       <input ref={i === 0 ? fr : null} type="text" inputMode="decimal" pattern="[0-9.,]*" min="0" step="any" style={inp} value={params[k] || ""} onChange={e => setP(k, e.target.value)} placeholder={ph} />
                     </div>
                   ); })}
                 </div>
 
-                {/* Wpm */}
-                {wpm > 0 && (
+                {/* Wpm (not for sheet — sheet has its own block below) */}
+                {!isSheet && wpm > 0 && (
                   <div style={{ background: "rgba(45,106,79,0.15)", borderRadius: 8, padding: "7px 12px", border: "1px solid rgba(82,183,136,0.2)", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                     <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>1 п.м.:</span>
                     <span style={{ fontSize: 17, fontWeight: 700, color: "#52b788", fontFamily: "'JetBrains Mono',monospace" }}>{fmt(wpm)}</span>
@@ -1043,7 +1072,36 @@ Example output:
                   </div>
                 )}
 
-                {/* Length + Weight — 2 columns */}
+                {/* Length + Weight — 2 columns (not for sheet) */}
+                {isSheet ? (<>
+                    {sheetKgM2 > 0 && (
+                    <div style={{ background: "rgba(45,106,79,0.10)", borderRadius: 8, padding: "7px 12px", border: "1px solid rgba(82,183,136,0.15)", display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>1 м²:</span>
+                      <span style={{ fontSize: 17, fontWeight: 700, color: "#52b788", fontFamily: "'JetBrains Mono',monospace" }}>{fmt(sheetKgM2)}</span>
+                      <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>кг</span>
+                    </div>
+                    )}
+                    {sheetWeight > 0 && (
+                    <div style={{ background: "rgba(45,106,79,0.10)", borderRadius: 8, padding: "7px 12px", border: "1px solid rgba(82,183,136,0.15)", display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>1 лист:</span>
+                      <span style={{ fontSize: 17, fontWeight: 700, color: "#52b788", fontFamily: "'JetBrains Mono',monospace" }}>{fmt(sheetWeight)}</span>
+                      <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>кг</span>
+                    </div>
+                    )}
+                    <div style={{ display: "grid", gridTemplateColumns: "100px 1fr", gap: 8 }}>
+                      <div>
+                        <label style={lbl}>Шт</label>
+                        <input type="text" inputMode="decimal" pattern="[0-9.,]*" min="0.01" step="any" style={inp} value={qty} onChange={e => { const q = fixNum(e.target.value); setQty(q); const qn = parseFloat(q) || 1; if (sheetWeight > 0) { setWeight((sheetWeight * qn).toFixed(2)); } setLastE("length"); }} />
+                      </div>
+                      <div>
+                        <label style={lbl}>Вес, кг</label>
+                        <input type="text" inputMode="decimal" pattern="[0-9.,]*" min="0" step="any" style={inp} value={weight} onChange={e => { const v2 = fixNum(e.target.value); setWeight(v2); const wf = parseFloat(v2); if (sheetWeight > 0 && wf > 0) { setQty((wf / sheetWeight).toFixed(2)); } setLastE("weight"); }} />
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button onClick={addH} disabled={!canAdd} style={{ ...btn(canAdd, "linear-gradient(135deg,#e8a838,#d4882a)", "#1a1a1a"), flex: 1, minWidth: 90 }}>↓ В список</button>
+                    </div>
+                </>) : (<>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                   <div>
                     <label style={lbl}>Длина, м</label>
@@ -1072,6 +1130,7 @@ Example output:
                     <span style={{ fontSize: 17, fontWeight: 700, color: "#e8a838", fontFamily: "'JetBrains Mono',monospace" }}>{fmt(parseFloat(weight) * (parseInt(qty) || 1))} кг</span>
                   </div>
                 )}
+                </>)}
               </div>
             </div>
           </div>
