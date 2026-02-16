@@ -1,0 +1,1177 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Калькулятор металлопроката</title>
+<meta name="description" content="Расчёт веса металлопроката: трубы, листы, арматура, уголки, швеллеры, двутавры">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚙️</text></svg>">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+<style>
+  html, body { margin: 0; padding: 0; background: #0b1a0f; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useMemo, useCallback, useEffect, useRef } = React;
+
+
+
+const METALS = {
+  steel: { name: "Сталь", density: 7850 },
+  stainless: { name: "Нержавейка", density: 7900 },
+  aluminum: { name: "Алюминий", density: 2700 },
+  copper: { name: "Медь", density: 8900 },
+  brass: { name: "Латунь", density: 8500 },
+  bronze: { name: "Бронза", density: 8800 },
+  titanium: { name: "Титан", density: 4505 },
+  cast_iron: { name: "Чугун", density: 7200 },
+  zinc: { name: "Цинк", density: 7130 },
+  lead: { name: "Свинец", density: 11340 },
+};
+
+const PROFILES = [
+  { id: "pipe_round", name: "Труба круглая", short: "Труба кр.", dLen: 12 },
+  { id: "pipe_profile", name: "Труба профильная", short: "Труба пр.", dLen: 12 },
+  { id: "circle", name: "Круг / Пруток", short: "Круг", dLen: 6 },
+  { id: "rebar", name: "Арматура", short: "Армат.", dLen: 12 },
+  { id: "square_bar", name: "Квадрат", short: "Квадрат", dLen: 6 },
+  { id: "hex_bar", name: "Шестигранник", short: "Шестигр.", dLen: 6 },
+  { id: "sheet", name: "Лист / Полоса", short: "Лист", dLen: null },
+  { id: "angle", name: "Уголок", short: "Уголок", dLen: 12 },
+  { id: "channel", name: "Швеллер", short: "Швеллер", dLen: 12 },
+  { id: "beam", name: "Двутавр", short: "Двутавр", dLen: 12 },
+];
+
+const PARAM_DEFS = {
+  diameter: { label: "Диаметр", unit: "мм", sym: "D" },
+  wall: { label: "Стенка", unit: "мм", sym: "t" },
+  sideA: { label: "Сторона A", unit: "мм", sym: "A" },
+  sideB: { label: "Сторона B", unit: "мм", sym: "B" },
+  side: { label: "Сторона", unit: "мм", sym: "a" },
+  width: { label: "Ширина", unit: "мм", sym: "W" },
+  thickness: { label: "Толщина", unit: "мм", sym: "t" },
+  height: { label: "Высота", unit: "мм", sym: "H" },
+  shelfWidth: { label: "Полка", unit: "мм", sym: "b" },
+  webThickness: { label: "Стенка", unit: "мм", sym: "s" },
+  flangeThickness: { label: "Полка толщ.", unit: "мм", sym: "t" },
+};
+
+const PARAMS_MAP = {
+  pipe_round: ["diameter", "wall"],
+  pipe_profile: ["sideA", "sideB", "wall"],
+  circle: ["diameter"],
+  rebar: ["diameter"],
+  square_bar: ["side"],
+  hex_bar: ["side"],
+  sheet: ["width", "thickness"],
+  angle: ["shelfWidth", "thickness"],
+  channel: ["height", "shelfWidth", "webThickness", "flangeThickness"],
+  beam: ["height", "shelfWidth", "webThickness", "flangeThickness"],
+};
+
+function calcArea(id, p) {
+  switch (id) {
+    case "pipe_round": { const R = p.diameter / 2, r = R - p.wall; return r <= 0 ? Math.PI * R * R : Math.PI * (R * R - r * r); }
+    case "pipe_profile": { const o = p.sideA * p.sideB, iA = p.sideA - 2 * p.wall, iB = p.sideB - 2 * p.wall; return (iA <= 0 || iB <= 0) ? o : o - iA * iB; }
+    case "circle": return Math.PI * (p.diameter / 2) ** 2;
+    case "rebar": return Math.PI * (p.diameter / 2) ** 2 * 1.02;
+    case "square_bar": return p.side * p.side;
+    case "hex_bar": return (3 * Math.sqrt(3) / 2) * (p.side / 2) ** 2;
+    case "sheet": return p.width * p.thickness;
+    case "angle": { const t = p.thickness, b = p.shelfWidth; return 2 * b * t - t * t + ((Math.PI / 4) * t * t - t * t) - 2 * ((t / 2) * (t / 2) - (Math.PI / 4) * (t / 2) * (t / 2)); }
+    case "channel": { const { height: H, shelfWidth: b, webThickness: tw, flangeThickness: tf } = p; const r = Math.min(tw, tf) * 0.5; return (H - 2 * tf) * tw + 2 * b * tf - 2 * (1 - Math.PI / 4) * r * r; }
+    case "beam": { const { height: H, shelfWidth: b, webThickness: tw, flangeThickness: tf } = p; const r = Math.min(tw, tf) * 0.5; return (H - 2 * tf) * tw + 2 * b * tf - 4 * (1 - Math.PI / 4) * r * r; }
+    default: return 0;
+  }
+}
+
+function ProfileIcon({ id, active }) {
+  const s = 30, cx = s / 2, cy = s / 2;
+  const cl = active ? "#fff" : "#52b788";
+  const fl = active ? "rgba(255,255,255,0.1)" : "rgba(82,183,136,0.08)";
+  const icons = {
+    pipe_round: <g><circle cx={cx} cy={cy} r={12} fill={fl} stroke={cl} strokeWidth={1.2} /><circle cx={cx} cy={cy} r={7} fill="none" stroke={cl} strokeWidth={1} /></g>,
+    pipe_profile: <g><rect x={cx-13} y={cy-9} width={26} height={18} rx={2} fill={fl} stroke={cl} strokeWidth={1.2} /><rect x={cx-9} y={cy-5} width={18} height={10} rx={1} fill="none" stroke={cl} strokeWidth={1} /></g>,
+    circle: <circle cx={cx} cy={cy} r={12} fill={fl} stroke={cl} strokeWidth={1.2} />,
+    rebar: <g><circle cx={cx} cy={cy} r={10} fill={fl} stroke={cl} strokeWidth={1.2} />{[0,1,2,3,4,5,6,7,8,9].map(i => { const a=(i/10)*Math.PI*2; return <line key={i} x1={cx+9*Math.cos(a)} y1={cy+9*Math.sin(a)} x2={cx+13*Math.cos(a)} y2={cy+13*Math.sin(a)} stroke={cl} strokeWidth={1.2} strokeLinecap="round" />; })}</g>,
+    square_bar: <rect x={cx-11} y={cy-11} width={22} height={22} fill={fl} stroke={cl} strokeWidth={1.2} />,
+    hex_bar: (() => { const r=12; const pts=[0,1,2,3,4,5].map(i=>{const a=Math.PI/6+(i*Math.PI)/3;return`${cx+r*Math.cos(a)},${cy+r*Math.sin(a)}`;}).join(" "); return <polygon points={pts} fill={fl} stroke={cl} strokeWidth={1.2} />; })(),
+    sheet: <rect x={cx-14} y={cy-3} width={28} height={6} fill={fl} stroke={cl} strokeWidth={1.2} />,
+    angle: <path d={`M${cx-9} ${cy-11}L${cx-9} ${cy+11}L${cx+11} ${cy+11}L${cx+11} ${cy+6}L${cx-3} ${cy+6}L${cx-3} ${cy-11}Z`} fill={fl} stroke={cl} strokeWidth={1.2} />,
+    channel: <path d={`M${cx-7} ${cy-12}L${cx+9} ${cy-12}L${cx+9} ${cy-6}L${cx-1} ${cy-6}L${cx-1} ${cy+6}L${cx+9} ${cy+6}L${cx+9} ${cy+12}L${cx-7} ${cy+12}Z`} fill={fl} stroke={cl} strokeWidth={1.2} />,
+    beam: <path d={`M${cx-9} ${cy-12}L${cx+9} ${cy-12}L${cx+9} ${cy-6}L${cx+3} ${cy-6}L${cx+3} ${cy+6}L${cx+9} ${cy+6}L${cx+9} ${cy+12}L${cx-9} ${cy+12}L${cx-9} ${cy+6}L${cx-3} ${cy+6}L${cx-3} ${cy-6}L${cx-9} ${cy-6}Z`} fill={fl} stroke={cl} strokeWidth={1.2} />,
+  };
+  return <svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>{icons[id]}</svg>;
+}
+
+function TechDrawing({ profileId, size }) {
+  const s = size || 160, w = s, h = s, mx = w / 2, my = h / 2;
+  const sc = s / 160;
+  const hf = { fill: "url(#hD)", stroke: "#52b788", strokeWidth: 1.5 };
+  const dm = { stroke: "#8ab4a0", strokeWidth: 0.7, markerEnd: "url(#aE)", markerStart: "url(#aS)" };
+  const dl = { stroke: "#8ab4a0", strokeWidth: 0.5, strokeDasharray: "3,2" };
+  const lb = { fill: "#52b788", fontSize: 11, fontFamily: "Nunito,sans-serif", fontWeight: 700, textAnchor: "middle" };
+  const ls = { ...lb, fontSize: 9 };
+  const Defs = <defs>
+    <pattern id="hD" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" stroke="#2d6a4f" strokeWidth="0.8" opacity="0.35" /></pattern>
+    <marker id="aE" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto"><path d="M0,0L5,2.5L0,5" fill="none" stroke="#8ab4a0" strokeWidth="0.7" /></marker>
+    <marker id="aS" markerWidth="5" markerHeight="5" refX="1" refY="2.5" orient="auto"><path d="M5,0L0,2.5L5,5" fill="none" stroke="#8ab4a0" strokeWidth="0.7" /></marker>
+  </defs>;
+  // Use fixed 160 viewBox and scale via SVG
+  const M = 80, MY = 84;
+  const drawings = {
+    pipe_round: <g><circle cx={M} cy={MY} r={44} {...hf} /><circle cx={M} cy={MY} r={30} fill="#0f1f15" stroke="#52b788" strokeWidth="1.5" /><line x1={M-44} y1={30} x2={M+44} y2={30} {...dm} /><line x1={M-44} y1={40} x2={M-44} y2={26} {...dl} /><line x1={M+44} y1={40} x2={M+44} y2={26} {...dl} /><text x={M} y={25} {...lb}>D</text><line x1={M+30} y1={MY} x2={M+44} y2={MY} {...dm} /><text x={M+37} y={MY-7} {...ls}>t</text></g>,
+    pipe_profile: <g><rect x={32} y={52} width={96} height={64} rx={3} {...hf} /><rect x={43} y={63} width={74} height={42} rx={2} fill="#0f1f15" stroke="#52b788" strokeWidth="1.5" /><line x1={32} y1={128} x2={128} y2={128} {...dm} /><line x1={32} y1={116} x2={32} y2={132} {...dl} /><line x1={128} y1={116} x2={128} y2={132} {...dl} /><text x={M} y={141} {...lb}>A</text><line x1={140} y1={52} x2={140} y2={116} {...dm} /><line x1={128} y1={52} x2={144} y2={52} {...dl} /><line x1={128} y1={116} x2={144} y2={116} {...dl} /><text x={150} y={88} {...lb}>B</text><line x1={32} y1={41} x2={43} y2={41} {...dm} /><text x={38} y={37} {...ls}>t</text></g>,
+    circle: <g><circle cx={M} cy={MY} r={44} {...hf} /><line x1={M-44} y1={30} x2={M+44} y2={30} {...dm} /><line x1={M-44} y1={40} x2={M-44} y2={26} {...dl} /><line x1={M+44} y1={40} x2={M+44} y2={26} {...dl} /><text x={M} y={25} {...lb}>D</text></g>,
+    rebar: <g><circle cx={M} cy={MY} r={38} {...hf} />{[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15].map(i=>{const a=(i/16)*Math.PI*2;return <line key={i} x1={M+36*Math.cos(a)} y1={MY+36*Math.sin(a)} x2={M+44*Math.cos(a)} y2={MY+44*Math.sin(a)} stroke="#52b788" strokeWidth="1.8" strokeLinecap="round" />;})}<line x1={M-44} y1={30} x2={M+44} y2={30} {...dm} /><line x1={M-44} y1={40} x2={M-44} y2={26} {...dl} /><line x1={M+44} y1={40} x2={M+44} y2={26} {...dl} /><text x={M} y={25} {...lb}>D</text></g>,
+    square_bar: <g><rect x={44} y={48} width={72} height={72} {...hf} /><line x1={44} y1={132} x2={116} y2={132} {...dm} /><line x1={44} y1={120} x2={44} y2={136} {...dl} /><line x1={116} y1={120} x2={116} y2={136} {...dl} /><text x={M} y={145} {...lb}>a</text></g>,
+    hex_bar: (()=>{const r=40;const pts=[0,1,2,3,4,5].map(i=>{const a=Math.PI/6+(i*Math.PI)/3;return`${M+r*Math.cos(a)},${MY+r*Math.sin(a)}`;}).join(" ");const xO=r*Math.cos(Math.PI/6);return <g><polygon points={pts} {...hf} /><line x1={M-xO} y1={134} x2={M+xO} y2={134} {...dm} /><line x1={M-xO} y1={MY+r*0.5+2} x2={M-xO} y2={138} {...dl} /><line x1={M+xO} y1={MY+r*0.5+2} x2={M+xO} y2={138} {...dl} /><text x={M} y={147} {...lb}>S</text></g>;})(),
+    sheet: <g><rect x={20} y={74} width={120} height={20} {...hf} /><line x1={20} y1={106} x2={140} y2={106} {...dm} /><line x1={20} y1={94} x2={20} y2={110} {...dl} /><line x1={140} y1={94} x2={140} y2={110} {...dl} /><text x={M} y={119} {...lb}>W</text><line x1={150} y1={74} x2={150} y2={94} {...dm} /><line x1={140} y1={74} x2={154} y2={74} {...dl} /><line x1={140} y1={94} x2={154} y2={94} {...dl} /><text x={150} y={69} {...ls}>t</text></g>,
+    angle: <g><path d={`M52 40L52 120L120 120L120 108L65 108L65 40Z`} {...hf} /><line x1={52} y1={134} x2={120} y2={134} {...dm} /><line x1={52} y1={120} x2={52} y2={138} {...dl} /><line x1={120} y1={120} x2={120} y2={138} {...dl} /><text x={86} y={147} {...lb}>b</text><line x1={52} y1={30} x2={65} y2={30} {...dm} /><line x1={52} y1={40} x2={52} y2={26} {...dl} /><line x1={65} y1={40} x2={65} y2={26} {...dl} /><text x={59} y={25} {...ls}>t</text></g>,
+    channel: <g><path d={`M58 38L108 38L108 50L72 50L72 110L108 110L108 122L58 122Z`} {...hf} /><line x1={44} y1={38} x2={44} y2={122} {...dm} /><line x1={58} y1={38} x2={40} y2={38} {...dl} /><line x1={58} y1={122} x2={40} y2={122} {...dl} /><text x={34} y={84} {...lb}>H</text><line x1={58} y1={26} x2={108} y2={26} {...dm} /><line x1={58} y1={38} x2={58} y2={22} {...dl} /><line x1={108} y1={38} x2={108} y2={22} {...dl} /><text x={83} y={22} {...lb}>b</text><line x1={58} y1={80} x2={72} y2={80} {...dm} /><text x={65} y={76} {...ls}>s</text><line x1={120} y1={110} x2={120} y2={122} {...dm} /><line x1={108} y1={110} x2={124} y2={110} {...dl} /><line x1={108} y1={122} x2={124} y2={122} {...dl} /><text x={130} y={119} {...ls}>t</text></g>,
+    beam: <g><path d={`M50 38L110 38L110 50L86 50L86 110L110 110L110 122L50 122L50 110L74 110L74 50L50 50Z`} {...hf} /><line x1={36} y1={38} x2={36} y2={122} {...dm} /><line x1={50} y1={38} x2={32} y2={38} {...dl} /><line x1={50} y1={122} x2={32} y2={122} {...dl} /><text x={26} y={84} {...lb}>H</text><line x1={50} y1={26} x2={110} y2={26} {...dm} /><line x1={50} y1={38} x2={50} y2={22} {...dl} /><line x1={110} y1={38} x2={110} y2={22} {...dl} /><text x={M} y={22} {...lb}>b</text><line x1={74} y1={80} x2={86} y2={80} {...dm} /><text x={M} y={76} {...ls}>s</text><line x1={122} y1={110} x2={122} y2={122} {...dm} /><line x1={110} y1={110} x2={126} y2={110} {...dl} /><line x1={110} y1={122} x2={126} y2={122} {...dl} /><text x={132} y={119} {...ls}>t</text></g>,
+  };
+  return <svg width={w} height={h} viewBox="0 0 160 160" style={{ display: "block" }}>{Defs}{drawings[profileId]}</svg>;
+}
+
+function fmt(n) {
+  if (!n || isNaN(n) || !isFinite(n)) return "—";
+  if (n < 0.001) return "< 0.001";
+  if (n >= 1000) return n.toFixed(1).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  if (n >= 100) return n.toFixed(2);
+  if (n >= 1) return n.toFixed(3);
+  return n.toFixed(4);
+}
+
+function useIsMobile(bp = 640) {
+  const [m, setM] = useState(typeof window !== "undefined" ? window.innerWidth < bp : false);
+  useEffect(() => { const h = () => setM(window.innerWidth < bp); window.addEventListener("resize", h); return () => window.removeEventListener("resize", h); }, [bp]);
+  return m;
+}
+
+function MetalCalculator() {
+  const mob = useIsMobile(640);
+  const [metal, setMetal] = useState("steel");
+  const [pid, setPid] = useState("pipe_round");
+  const [params, setParams] = useState({});
+  const [length, setLength] = useState("12");
+  const [weight, setWeight] = useState("");
+  const [lastE, setLastE] = useState("length");
+  const [hist, setHist] = useState([]);
+  const [qty, setQty] = useState("1");
+  const [copied, setCopied] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importTab, setImportTab] = useState("text"); // text | file | photo
+  const [importStatus, setImportStatus] = useState(""); // loading message
+  const [importError, setImportError] = useState("");
+  const fileRef = useRef(null);
+  const galleryRef = useRef(null);
+  const cameraRef = useRef(null);
+  const fr = useRef(null);
+
+  const prof = PROFILES.find(p => p.id === pid);
+  const pKeys = PARAMS_MAP[pid] || [];
+  const dens = METALS[metal].density;
+
+  useEffect(() => { setParams({}); setWeight(""); setLength(prof?.dLen ? String(prof.dLen) : ""); setLastE("length"); setTimeout(() => fr.current?.focus(), 50); }, [pid]);
+
+  const setP = useCallback((k, v) => setParams(prev => ({ ...prev, [k]: v })), []);
+  const allF = pKeys.every(k => parseFloat(params[k]) > 0);
+  const wpm = useMemo(() => { if (!allF) return 0; const np = {}; pKeys.forEach(k => { np[k] = parseFloat(params[k]); }); const a = calcArea(pid, np); return a > 0 ? (a / 1e6) * dens : 0; }, [pid, params, dens, allF, pKeys]);
+
+  const hLen = (v) => { setLength(v); setLastE("length"); if (wpm > 0 && parseFloat(v) > 0) setWeight((wpm * parseFloat(v)).toFixed(2)); else setWeight(""); };
+  const hWt = (v) => { setWeight(v); setLastE("weight"); if (wpm > 0 && parseFloat(v) > 0) setLength((parseFloat(v) / wpm).toFixed(3)); else setLength(""); };
+  useEffect(() => { if (wpm <= 0) return; if (lastE === "length" && parseFloat(length) > 0) setWeight((wpm * parseFloat(length)).toFixed(2)); else if (lastE === "weight" && parseFloat(weight) > 0) setLength((parseFloat(weight) / wpm).toFixed(3)); }, [wpm]);
+
+  const canAdd = parseFloat(length) > 0 && parseFloat(weight) > 0 && wpm > 0;
+  const addH = () => { if (!canAdd) return; const q = parseInt(qty) || 1, w = parseFloat(weight); setHist(prev => [{ id: Date.now(), prof: prof.name, metal: METALS[metal].name, metalKey: metal, profileId: pid, params: { ...params }, pk: [...pKeys], len: parseFloat(length), qty: q, tw: w * q }, ...prev]); };
+  const rmH = (id) => setHist(prev => prev.filter(e => e.id !== id));
+  const loadH = (e) => { setMetal(e.metalKey); setPid(e.profileId); setTimeout(() => { const np = {}; e.pk.forEach(k => { np[k] = e.params[k]; }); setParams(np); setLength(String(e.len)); setQty(String(e.qty)); setLastE("length"); }, 60); };
+  const [editId, setEditId] = useState(null);
+  const [editLen, setEditLen] = useState("");
+  const [editQty, setEditQty] = useState("");
+  const startEdit = (e, ev) => { ev.stopPropagation(); setEditId(e.id); setEditLen(String(e.len)); setEditQty(String(e.qty)); };
+  const saveEdit = (e) => {
+    const newLen = parseFloat(editLen) || e.len;
+    const newQty = parseInt(editQty) || e.qty;
+    /* Recalculate weight */
+    const np = {}; e.pk.forEach(k => { np[k] = parseFloat(e.params[k]) || 0; });
+    const area = calcArea(e.profileId, np);
+    const wpmE = area > 0 ? (area / 1e6) * METALS[e.metalKey].density : 0;
+    const newTw = wpmE * newLen * newQty;
+    setHist(prev => prev.map(h => h.id === e.id ? { ...h, len: newLen, qty: newQty, tw: newTw } : h));
+    setEditId(null);
+  };
+  const totW = hist.reduce((s, e) => s + e.tw, 0);
+  const copyTSV = () => { const h = "Профиль\tМеталл\tРазмеры\tДлина м\tКол-во\tВес кг"; const rows = hist.map(e => `${e.prof}\t${e.metal}\t${e.pk.map(k => e.params[k]).join("×")}\t${e.len}\t${e.qty}\t${e.tw.toFixed(2)}`); navigator.clipboard.writeText([h, ...rows, `ИТОГО\t\t\t\t\t${totW.toFixed(2)}`].join("\n")).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }); };
+
+  const importExample = "Труба круглая;Сталь;720;7.5;12;1\nТруба круглая;Сталь;219.1;12.7;10;2";
+
+  /* Extract dimensions from description */
+  const extractDims = (desc) => {
+    // pattern: (D x T) or (DxT) — in parentheses (pipe, profile tube)
+    let m = desc.match(/\((\d+[\.,]?\d*)\s*[xх×]\s*(\d+[\.,]?\d*)\)/i);
+    if (m) return [parseFloat(m[1].replace(",", ".")), parseFloat(m[2].replace(",", "."))];
+    // pattern: DxT without parentheses
+    m = desc.match(/(\d+[\.,]?\d*)\s*[xх×]\s*(\d+[\.,]?\d*)/i);
+    if (m) return [parseFloat(m[1].replace(",", ".")), parseFloat(m[2].replace(",", "."))];
+    // single dimension for circle/rebar/square/hex: "Круг 5мм" or "Круг (пруток) 500мм" or "d=25"
+    m = desc.match(/(?:круг|пруток|арматур|rod|bar|circle|rebar|квадрат|square|шестигр|hex)[^0-9]*(\d+[\.,]?\d*)\s*мм/i);
+    if (m) return [parseFloat(m[1].replace(",", "."))];
+    m = desc.match(/(?:круг|пруток|арматур|rod|bar|circle|rebar|квадрат|square|шестигр|hex)[^0-9]*[dDдД]\s*=?\s*(\d+[\.,]?\d*)/i);
+    if (m) return [parseFloat(m[1].replace(",", "."))];
+    // sheet/plate: "Лист 5мм 1000x2000" or "Лист 1000x5"
+    m = desc.match(/(?:лист|sheet|plate|полос)[^0-9]*(\d+[\.,]?\d*)\s*[xх×]\s*(\d+[\.,]?\d*)/i);
+    if (m) return [parseFloat(m[1].replace(",", ".")), parseFloat(m[2].replace(",", "."))];
+    return null;
+  };
+
+  /* Detect profile type from description */
+  const detectProfile = (desc) => {
+    const d = desc.toLowerCase();
+    if (d.includes("труб") && (d.includes("профил") || d.includes("прямоуг") || d.includes("квадратн"))) return PROFILES.find(p => p.id === "pipe_profile");
+    if (d.includes("pipe") || d.includes("труб") || d.includes("nipple") || d.includes("ниппел")) return PROFILES.find(p => p.id === "pipe_round");
+    if (d.includes("армат") || d.includes("rebar")) return PROFILES.find(p => p.id === "rebar");
+    if (d.includes("круг") || d.includes("пруток") || d.includes("circle") || d.includes("rod") || d.includes("round bar")) return PROFILES.find(p => p.id === "circle");
+    if (d.includes("лист") || d.includes("sheet") || d.includes("plate") || d.includes("полос")) return PROFILES.find(p => p.id === "sheet");
+    if (d.includes("угол") || d.includes("angle")) return PROFILES.find(p => p.id === "angle");
+    if (d.includes("швелл") || d.includes("channel")) return PROFILES.find(p => p.id === "channel");
+    if (d.includes("двутавр") || d.includes("beam")) return PROFILES.find(p => p.id === "beam");
+    if (d.includes("шестигр") || d.includes("hex")) return PROFILES.find(p => p.id === "hex_bar");
+    if (d.includes("квадрат") || d.includes("square")) return PROFILES.find(p => p.id === "square_bar");
+    return null; // unknown
+  };
+
+  /* Detect metal from description */
+  const detectMetal = (desc) => {
+    const d = desc.toLowerCase();
+    if (d.includes("нерж") || d.includes("stainless") || d.includes("ss") || /a182|a312|a358|a240|tp304|tp316|f316|f321|310s|304l|316l/i.test(desc)) return "stainless";
+    if (d.includes("алюмин") || d.includes("alumin") || /6061|6063|5052/i.test(desc)) return "aluminum";
+    if (d.includes("медь") || d.includes("copper")) return "copper";
+    if (d.includes("латунь") || d.includes("brass")) return "brass";
+    if (d.includes("титан") || d.includes("titan")) return "titanium";
+    return "steel";
+  };
+
+  const buildEntry = (desc, qtyVal, lenVal) => {
+    const dims = extractDims(desc);
+    if (!dims) return null;
+    const prof = detectProfile(desc);
+    if (!prof) return null;
+    const metalKey = detectMetal(desc);
+    const pk = PARAMS_MAP[prof.id];
+    const po = {};
+    pk.forEach((k, i) => { po[k] = dims[i] !== undefined ? String(dims[i]) : "0"; });
+    const np = {};
+    pk.forEach(k => { np[k] = parseFloat(po[k]) || 0; });
+    const d = METALS[metalKey].density;
+    const area = calcArea(prof.id, np);
+    const w = area > 0 ? (area / 1e6) * d : 0;
+    const tw = w * lenVal * qtyVal;
+    if (tw <= 0) return null;
+    return {
+      id: Date.now() + Math.random(), prof: prof.name, metal: METALS[metalKey].name, metalKey,
+      profileId: prof.id, params: po, pk: [...pk], len: lenVal, qty: qtyVal, tw,
+      desc: desc.trim(),
+    };
+  };
+
+  const parseImport = (text) => {
+    const rawLines = text.trim().split("\n").map(l => l.trim()).filter(l => l);
+    const newItems = [];
+
+    /* Strategy 1: Try CSV/TSV (semicolon or tab separated, each line has 4+ parts) */
+    const csvLines = rawLines.filter(l => l.split(/[;\t]/).length >= 4);
+    if (csvLines.length > 0 && csvLines.length >= rawLines.length * 0.5) {
+      for (const line of csvLines) {
+        const parts = line.split(/[;\t]/).map(s => s.trim());
+        if (parts.length < 4) continue;
+        let profName = parts[0] || "Труба круглая";
+        let metalName = parts.length >= 6 ? parts[1] : "Сталь";
+        let dims2, lv, qv;
+        if (parts.length >= 6) { dims2 = parts.slice(2, parts.length - 2).map(Number); lv = parseFloat(parts[parts.length - 2]) || 12; qv = parseInt(parts[parts.length - 1]) || 1; }
+        else if (parts.length === 5) { dims2 = parts.slice(1, 3).map(Number); lv = parseFloat(parts[3]) || 12; qv = parseInt(parts[4]) || 1; }
+        else { dims2 = parts.slice(1).map(Number); lv = 12; qv = 1; }
+        const pm = PROFILES.find(p => p.name.toLowerCase().includes(profName.toLowerCase())) || PROFILES[0];
+        const mm2 = Object.entries(METALS).find(([k, v]) => v.name.toLowerCase().includes(metalName.toLowerCase()));
+        const mk = mm2 ? mm2[0] : "steel"; const d = METALS[mk].density; const pk = PARAMS_MAP[pm.id];
+        const po = {}; pk.forEach((k, i) => { po[k] = dims2[i] !== undefined ? String(dims2[i]) : "0"; });
+        const np = {}; pk.forEach(k => { np[k] = parseFloat(po[k]) || 0; });
+        const area = calcArea(pm.id, np); const w = area > 0 ? (area / 1e6) * d : 0; const tw = w * lv * qv;
+        if (tw > 0) newItems.push({ id: Date.now() + Math.random(), prof: pm.name, metal: METALS[mk].name, metalKey: mk, profileId: pm.id, params: po, pk: [...pk], len: lv, qty: qv, tw });
+      }
+      if (newItems.length > 0) { setHist(prev => [...newItems, ...prev]); setShowImport(false); setImportText(""); return; }
+    }
+
+    /* Strategy 2: Multi-line paste from Word/PDF table */
+    /* First pass: normalize — merge lines and identify blocks */
+    /* Pattern: row_number → description(DxT) → UOM → value */
+    
+    /* Collect all description lines with their positions */
+    const descEntries = [];
+    for (let k = 0; k < rawLines.length; k++) {
+      if (extractDims(rawLines[k])) {
+        descEntries.push({ idx: k, desc: rawLines[k] });
+      }
+    }
+
+    /* For each description, look for UOM+value: first on same line, then between lines */
+    for (let d = 0; d < descEntries.length; d++) {
+      const entry = descEntries[d];
+      const nextDescIdx = d + 1 < descEntries.length ? descEntries[d + 1].idx : rawLines.length;
+      
+      let lenVal = 1, qtyVal = 1, uom = "", qtyUom2 = "";
+      
+      /* First: check if qty is on the SAME line as description: "...ASTM A333 Gr.6 - 37 м" */
+      const inlineQty = entry.desc.match(/[-–—]\s*(\d+[\.,]?\d*)\s*(т|м|m|шт|pcs|кг|kg)?\s*$/i);
+      if (inlineQty) {
+        const num = parseFloat(inlineQty[1].replace(",", "."));
+        qtyUom2 = (inlineQty[2] || "").toLowerCase();
+        if (qtyUom2 === "т") { lenVal = num; }
+        else if (qtyUom2 === "м" || qtyUom2 === "m") { lenVal = num; qtyVal = 1; }
+        else if (qtyUom2 === "шт" || qtyUom2 === "pcs") { qtyVal = Math.round(num); lenVal = 1; }
+        else { lenVal = num; }
+      } else {
+        /* Check next line for "- 0,1 м" continuation */
+        if (entry.idx + 1 < nextDescIdx) {
+          const nxtLine = rawLines[entry.idx + 1].trim();
+          const contQty = nxtLine.match(/^[-–—]\s*(\d+[\.,]?\d*)\s*(т|м|m|шт|pcs|кг|kg)?\s*$/i);
+          if (contQty) {
+            const num = parseFloat(contQty[1].replace(",", "."));
+            qtyUom2 = (contQty[2] || "").toLowerCase();
+            if (qtyUom2 === "т") { lenVal = num; }
+            else if (qtyUom2 === "м" || qtyUom2 === "m") { lenVal = num; qtyVal = 1; }
+            else if (qtyUom2 === "шт" || qtyUom2 === "pcs") { qtyVal = Math.round(num); lenVal = 1; }
+            else { lenVal = num; }
+          }
+        }
+        
+        /* Original: scan lines between descriptions for UOM + value */
+        if (lenVal === 1 && qtyVal === 1) {
+          for (let k = entry.idx + 1; k < nextDescIdx; k++) {
+            const ln = rawLines[k].trim();
+            if (/^(m|м|meter|meters|ft)$/i.test(ln)) { uom = "m"; continue; }
+            if (/^(pcs|шт|pc|ea)$/i.test(ln)) { uom = "pcs"; continue; }
+            if (/^(kg|кг)$/i.test(ln)) { uom = "kg"; continue; }
+            if (/^\d+$/.test(ln) && parseInt(ln) < 500 && !uom) continue;
+            const num = parseFloat(ln.replace(",", "."));
+            if (!isNaN(num) && num >= 0) {
+              if (uom === "m" || uom === "") { lenVal = num || 1; qtyVal = 1; }
+              else if (uom === "pcs") { qtyVal = Math.max(1, Math.round(num)); lenVal = 1; }
+              break;
+            }
+          }
+        }
+      }
+      
+      /* Handle tonnes: back-calculate length from weight */
+      if (qtyUom2 === "т") {
+        const prof2 = detectProfile(entry.desc);
+        if (prof2) {
+          const mk2 = detectMetal(entry.desc);
+          const pk2 = PARAMS_MAP[prof2.id];
+          const dims2 = extractDims(entry.desc);
+          if (dims2) {
+            const np2 = {};
+            pk2.forEach((k, i) => { np2[k] = dims2[i] !== undefined ? dims2[i] : 0; });
+            const area2 = calcArea(prof2.id, np2);
+            const wpm2 = area2 > 0 ? (area2 / 1e6) * METALS[mk2].density : 0;
+            if (wpm2 > 0) {
+              const twKg = lenVal * 1000;
+              lenVal = parseFloat((twKg / wpm2).toFixed(3));
+              qtyVal = 1;
+            }
+          }
+        }
+      }
+      
+      const item = buildEntry(entry.desc, qtyVal, lenVal);
+      if (item) newItems.push(item);
+    }
+
+    if (newItems.length > 0) { setHist(prev => [...newItems, ...prev]); setShowImport(false); setImportText(""); setImportError(""); return; }
+
+    /* Strategy 3: Single-line format: "7) Круг (пруток) 5мм ASTM... - 0,032 т" */
+    /* Each line has description + quantity, sometimes qty wraps to next line */
+    for (let li = 0; li < rawLines.length; li++) {
+      const line = rawLines[li];
+      /* Remove leading numbering like "7)" or "7." or "7 " */
+      const cleaned = line.replace(/^\d+[\)\.\s]+\s*/, "").trim();
+      if (!cleaned) continue;
+      
+      /* Check if this line has dimensions */
+      const dims = extractDims(cleaned);
+      if (!dims) continue;
+      
+      /* Try to find quantity: on same line or next line */
+      /* Pattern: "- 0,032 т" or "- 37 м" or "- 15 шт" */
+      let lenVal = 1, qtyVal = 1, qtyUom = "";
+      let fullText = cleaned;
+      
+      /* Check if next line is a continuation (starts with "-" or is just a number+uom) */
+      if (li + 1 < rawLines.length) {
+        const nextL = rawLines[li + 1].trim();
+        if (/^[-–—]\s*\d/.test(nextL) || /^\d+[\.,]?\d*\s*(т|м|m|шт|pcs|кг|kg)\s*$/i.test(nextL)) {
+          fullText = cleaned + " " + nextL;
+          li++; /* skip next line */
+        }
+      }
+      
+      const qtyMatch = fullText.match(/[-–—]\s*(\d+[\.,]?\d*)\s*(т|м|m|шт|pcs|кг|kg)?\s*$/i);
+      if (qtyMatch) {
+        const num = parseFloat(qtyMatch[1].replace(",", "."));
+        qtyUom = (qtyMatch[2] || "").toLowerCase();
+        if (qtyUom === "т") {
+          lenVal = num; qtyVal = 1;
+        } else if (qtyUom === "м" || qtyUom === "m") {
+          lenVal = num; qtyVal = 1;
+        } else if (qtyUom === "шт" || qtyUom === "pcs") {
+          qtyVal = Math.round(num); lenVal = 1;
+        } else if (qtyUom === "кг" || qtyUom === "kg") {
+          lenVal = num / 1000; qtyVal = 1;
+        } else {
+          lenVal = num; qtyVal = 1;
+        }
+      }
+      
+      /* Build the entry */
+      const prof = detectProfile(fullText);
+      if (!prof) continue;
+      const metalKey = detectMetal(fullText);
+      const pk = PARAMS_MAP[prof.id];
+      const po = {};
+      pk.forEach((k, i) => { po[k] = dims[i] !== undefined ? String(dims[i]) : "0"; });
+      const np = {};
+      pk.forEach(k => { np[k] = parseFloat(po[k]) || 0; });
+      const dens3 = METALS[metalKey].density;
+      const area = calcArea(prof.id, np);
+      const wpm3 = area > 0 ? (area / 1e6) * dens3 : 0;
+      
+      let tw;
+      if (qtyUom === "т" && wpm3 > 0) {
+        /* Tonnes given directly */
+        tw = lenVal * 1000; /* convert tonnes to kg */
+        lenVal = tw / wpm3; /* back-calculate length */
+        qtyVal = 1;
+      } else {
+        tw = wpm3 * lenVal * qtyVal;
+      }
+      
+      if (tw > 0) {
+        newItems.push({
+          id: Date.now() + Math.random(), prof: prof.name, metal: METALS[metalKey].name, metalKey,
+          profileId: prof.id, params: po, pk: [...pk], len: parseFloat(lenVal.toFixed(3)), qty: qtyVal, tw,
+          desc: fullText.trim(),
+        });
+      }
+    }
+
+    if (newItems.length > 0) { setHist(prev => [...newItems, ...prev]); setShowImport(false); setImportText(""); setImportError(""); }
+    else { setImportError("Не удалось распознать позиции. Проверьте формат."); }
+  };
+
+  /* ---- EXCEL / CSV file handler ---- */
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportStatus("Читаю файл...");
+    setImportError("");
+    try {
+      const ext = file.name.split(".").pop().toLowerCase();
+      if (ext === "csv" || ext === "tsv" || ext === "txt") {
+        const text = await file.text();
+        setImportStatus("");
+        parseImport(text);
+        return;
+      }
+      /* XLSX */
+      const XLSX = window.XLSX;
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      let allText = "";
+      for (const name of wb.SheetNames) {
+        const ws = wb.Sheets[name];
+        const csv = XLSX.utils.sheet_to_csv(ws, { FS: ";" });
+        allText += csv + "\n";
+      }
+      setImportStatus("");
+      parseImport(allText);
+    } catch (err) {
+      setImportStatus("");
+      setImportError("Ошибка чтения файла: " + err.message);
+    }
+    if (fileRef.current) fileRef.current.value = "";
+  };
+
+  /* ---- PDF handler ---- */
+  const handlePDF = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportStatus("Читаю PDF...");
+    setImportError("");
+    try {
+      const buf = await file.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let binary = "";
+      const chunk = 8192;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+      }
+      const base64 = btoa(binary);
+      
+      setImportStatus("AI распознаёт таблицу...");
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 4000,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } },
+              { type: "text", text: `Extract all metal products/pipes from this document. For each item that has dimensions (like DxT or diameter x wall thickness), output one line in format:
+ProfileType;Metal;Dim1;Dim2;Length;Qty
+Where ProfileType is one of: Труба круглая, Труба профильная, Круг, Арматура, Квадрат, Шестигранник, Лист, Уголок, Швеллер, Двутавр
+Metal: Сталь (default), Нержавейка, Алюминий, etc.
+Dim1, Dim2: dimensions in mm (diameter, wall thickness etc.)
+Length: length in meters (use 1 if unit is pcs)
+Qty: quantity (default 1)
+
+Output ONLY the CSV lines, nothing else. No headers, no explanations.
+Example: Труба круглая;Сталь;168.3;14.27;276.693;1` }
+            ]
+          }]
+        })
+      });
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => "");
+        setImportStatus("");
+        setImportError(`PDF API (${resp.status}): ${errText.slice(0, 300)}`);
+        return;
+      }
+      const rawT = await resp.text();
+      let data;
+      try { data = JSON.parse(rawT); } catch (pe) {
+        setImportStatus("");
+        setImportError("PDF ответ не JSON: " + rawT.slice(0, 300));
+        return;
+      }
+      if (data.error) {
+        setImportStatus("");
+        setImportError("API: " + (data.error.message || JSON.stringify(data.error)));
+        return;
+      }
+      const text = data.content?.map(c => c.text || "").join("\n") || "";
+      setImportStatus("");
+      if (text.trim()) { parseImport(text); }
+      else { setImportError("Не удалось распознать позиции из PDF"); }
+    } catch (err) {
+      setImportStatus("");
+      setImportError("Ошибка PDF: " + err.message);
+    }
+    if (fileRef.current) fileRef.current.value = "";
+  };
+
+  /* ---- Compress image via canvas ---- */
+  const compressImage = (file, maxDim = 1200, quality = 0.8) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          let w = img.width, h = img.height;
+          if (w > maxDim || h > maxDim) {
+            const ratio = Math.min(maxDim / w, maxDim / h);
+            w = Math.round(w * ratio);
+            h = Math.round(h * ratio);
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, w, h);
+          const dataUrl = canvas.toDataURL("image/jpeg", quality);
+          const base64 = dataUrl.split(",")[1];
+          resolve({ base64, mediaType: "image/jpeg" });
+        };
+        img.onerror = () => reject(new Error("Image decode failed"));
+        img.src = reader.result;
+      };
+      reader.onerror = () => reject(new Error("FileReader failed"));
+      reader.readAsDataURL(file);
+    });
+  };
+
+  /* ---- Process image (shared by file pick & paste) ---- */
+  const processImage = async (file) => {
+    setImportStatus("Сжимаю изображение...");
+    setImportError("");
+    try {
+      const { base64, mediaType } = await compressImage(file, 800, 0.6);
+      const sizeKB = Math.round(base64.length * 0.75 / 1024);
+      setImportStatus(`AI распознаёт (${sizeKB} КБ)...`);
+      
+      const body = {
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 4000,
+        messages: [{
+          role: "user",
+          content: [
+            { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
+            { type: "text", text: `Extract all metal pipe items from this image table. For each item with dimensions in parentheses like (168.3x14.27), output one CSV line:
+Труба круглая;Сталь;Diameter;WallThickness;Length;Qty
+If UOM=m: Length=Qty value, Qty=1. If UOM=pcs: Length=1, Qty=number.
+Output ONLY CSV lines, no headers, no markdown.` }
+          ]
+        }]
+      };
+
+      let resp;
+      try {
+        resp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+      } catch (fetchErr) {
+        setImportStatus("");
+        setImportError("Fetch: " + fetchErr.message + " (" + fetchErr.name + "). Размер: " + sizeKB + " КБ");
+        return;
+      }
+      
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => "нет тела");
+        setImportStatus("");
+        setImportError(`HTTP ${resp.status}: ${errText.slice(0, 300)}`);
+        return;
+      }
+      
+      let rawText;
+      try { rawText = await resp.text(); } catch (readErr) {
+        setImportStatus("");
+        setImportError("Чтение ответа: " + readErr.message);
+        return;
+      }
+
+      let data;
+      try { data = JSON.parse(rawText); } catch (pe) {
+        setImportStatus("");
+        setImportError("Не JSON (" + rawText.length + "): " + rawText.slice(0, 200));
+        return;
+      }
+      
+      if (data.error) {
+        setImportStatus("");
+        setImportError("API: " + (data.error.message || JSON.stringify(data.error)));
+        return;
+      }
+      
+      const text = data.content?.map(c => c.text || "").join("\n") || "";
+      setImportStatus("");
+      if (text.trim()) { parseImport(text); }
+      else { setImportError("AI не нашёл позиций. Ответ: " + JSON.stringify(data).slice(0, 200)); }
+    } catch (err) {
+      setImportStatus("");
+      setImportError(err.name + ": " + err.message);
+    }
+  };
+
+  /* ---- Photo from file input ---- */
+  const handlePhoto = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await processImage(file);
+    if (e.target) e.target.value = "";
+  };
+
+  /* ---- Paste handler (Ctrl+V / clipboard) ---- */
+  const handlePaste = useCallback(async (e) => {
+    if (!showImport) return;
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith("image/")) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) {
+          setImportTab("photo");
+          await processImage(file);
+        }
+        return;
+      }
+    }
+  }, [showImport]);
+
+  useEffect(() => {
+    document.addEventListener("paste", handlePaste);
+    return () => document.removeEventListener("paste", handlePaste);
+  }, [handlePaste]);
+
+  /* ---- DOCX handler — always use AI for best results ---- */
+  const handleDocx = async (file) => {
+    setImportStatus("AI анализирует документ...");
+    setImportError("");
+    try {
+      const buf = await file.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      /* Convert to base64 in chunks to avoid call stack overflow */
+      let binary = "";
+      const chunk = 8192;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+      }
+      const base64 = btoa(binary);
+      
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 8000,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "document", source: { type: "base64", media_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", data: base64 } },
+              { type: "text", text: `This is a Request for Quotation for metal products. Extract ALL items that have pipe/tube dimensions (DxT format like 168.3x14.27) from the tables in this document.
+
+For each item with dimensions, output one line in this exact CSV format:
+Труба круглая;Сталь;Diameter_mm;WallThickness_mm;Length_m;Qty
+
+Rules:
+- If UOM is "m" (meters): set Length = the Qty value from the table, set Qty = 1
+- If UOM is "pcs": set Length = 1, set Qty = the quantity number from the table  
+- For nipples with length like L=75mm or L=150mm: use Length = 0.075 or 0.15 (convert mm to meters), Qty = the pcs quantity
+- For elbows, tees, reducers (pcs items with dimensions): set Length = 1, Qty = the pcs quantity
+- Extract dimensions from parentheses like (26.7x3.91) where first = diameter mm, second = wall thickness mm
+- For reducers with format (457.2x39.67-355.6x31.75): use the LARGER diameter pair (457.2x39.67)
+- Skip items that have NO dimensions in parentheses (flanges without DxT, gaskets, bolts, spectacle blinds)
+- Use Сталь as metal for all
+
+Output ONLY the semicolon-separated CSV lines. No headers, no markdown, no backticks, no explanations.
+Example output:
+Труба круглая;Сталь;26.7;3.91;2.184;1
+Труба круглая;Сталь;168.3;14.27;276.693;1
+Труба круглая;Сталь;26.7;5.56;0.075;56
+Труба круглая;Сталь;33.4;6.35;1;7` }
+            ]
+          }]
+        })
+      });
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => "");
+        setImportStatus("");
+        setImportError(`DOCX API (${resp.status}): ${errText.slice(0, 300)}`);
+        return;
+      }
+      const rawD = await resp.text();
+      let data;
+      try { data = JSON.parse(rawD); } catch (pe) {
+        setImportStatus("");
+        setImportError("DOCX ответ не JSON: " + rawD.slice(0, 300));
+        return;
+      }
+      if (data.error) {
+        setImportStatus("");
+        setImportError("API ошибка: " + (data.error.message || JSON.stringify(data.error)));
+        return;
+      }
+      const aiText = data.content?.map(c => c.text || "").join("\n") || "";
+      setImportStatus("");
+      if (aiText.trim()) { 
+        parseImport(aiText); 
+      } else { 
+        setImportError("AI не вернул результатов. Попробуйте загрузить как PDF."); 
+      }
+    } catch (err) {
+      setImportStatus("");
+      setImportError("Ошибка: " + err.message);
+    }
+  };
+
+  const inp = { width: "100%", padding: mob ? "12px" : "10px 12px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, color: "#fff", fontSize: 16, fontFamily: "'JetBrains Mono',monospace", outline: "none", WebkitAppearance: "none", appearance: "none", MozAppearance: "textfield" };
+  const lbl = { fontSize: 11, color: "rgba(255,255,255,0.45)", display: "block", marginBottom: 4, fontFamily: "'Nunito',sans-serif", fontWeight: 600 };
+  const btn = (active, bg, clr) => ({ padding: mob ? "12px 16px" : "10px 14px", background: active ? bg : "rgba(255,255,255,0.04)", border: "none", borderRadius: 8, color: active ? clr : "rgba(255,255,255,0.15)", fontSize: 14, fontWeight: 700, cursor: active ? "pointer" : "default", fontFamily: "'Nunito',sans-serif", WebkitAppearance: "none" });
+
+  return (
+    <div style={{ minHeight: "100vh", background: "linear-gradient(160deg,#0b1a0f,#122118 40%,#1a2f22)", fontFamily: "'Segoe UI',-apple-system,sans-serif", color: "#e8f0ea", WebkitTextSizeAdjust: "100%" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Nunito:wght@400;600;700;800&display=swap');
+        *{box-sizing:border-box;margin:0;padding:0}
+        input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;display:none}
+        input[type="number"]{-moz-appearance:textfield;-webkit-appearance:none;appearance:none}
+        input:focus,select:focus,textarea:focus{border-color:#52b788!important;outline:none}
+        select{-webkit-appearance:none;appearance:none}
+      `}</style>
+
+      {/* Header */}
+      <div style={{ background: "linear-gradient(135deg,#2d6a4f,#1b4332)", padding: mob ? "10px 14px" : "12px 18px", display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,0.12)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, flexShrink: 0 }}>⚙️</div>
+        <h1 style={{ fontFamily: "'Nunito',sans-serif", fontSize: mob ? 15 : 18, fontWeight: 800, color: "#fff" }}>Калькулятор металлопроката</h1>
+      </div>
+
+      {/* Mobile: horizontal profile scroll */}
+      {mob && (
+        <div style={{ position: "relative", padding: "8px 0 0" }}>
+          <div style={{ overflowX: "auto", display: "flex", gap: 6, padding: "0 10px", WebkitOverflowScrolling: "touch" }}>
+            {PROFILES.map(p => (
+              <button key={p.id} onClick={() => setPid(p.id)} style={{
+                flexShrink: 0, width: 56, padding: "5px 2px 3px",
+                background: pid === p.id ? "linear-gradient(135deg,#2d6a4f,#40916c)" : "rgba(255,255,255,0.03)",
+                border: pid === p.id ? "1.5px solid rgba(82,183,136,0.6)" : "1.5px solid rgba(255,255,255,0.06)",
+                borderRadius: 10, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 1, WebkitAppearance: "none",
+              }}>
+                <ProfileIcon id={p.id} active={pid === p.id} />
+                <span style={{ fontSize: 7, color: pid === p.id ? "#fff" : "rgba(255,255,255,0.35)", fontFamily: "'Nunito',sans-serif", fontWeight: 700, textAlign: "center", lineHeight: 1.1 }}>{p.short}</span>
+              </button>
+            ))}
+            {/* Spacer so last icon isn't hidden by fade */}
+            <div style={{ flexShrink: 0, width: 24 }} />
+          </div>
+          {/* Right fade indicator → shows there are more icons */}
+          <div style={{
+            position: "absolute", top: 0, right: 0, bottom: 0, width: 40,
+            background: "linear-gradient(to right, transparent, #111f16)",
+            pointerEvents: "none", display: "flex", alignItems: "center", justifyContent: "flex-end", paddingRight: 6,
+          }}>
+            <span style={{ color: "rgba(82,183,136,0.6)", fontSize: 14 }}>›</span>
+          </div>
+        </div>
+      )}
+
+      <div style={{ maxWidth: 1060, margin: "0 auto", padding: mob ? "8px" : "12px 10px", display: "flex", gap: 10, flexDirection: mob ? "column" : "row" }}>
+        {/* Desktop: vertical icon strip */}
+        {!mob && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
+            {PROFILES.map(p => (
+              <button key={p.id} onClick={() => setPid(p.id)} title={p.name} style={{
+                width: 58, minHeight: 52, flexShrink: 0, padding: "4px 2px 2px",
+                background: pid === p.id ? "linear-gradient(135deg,#2d6a4f,#40916c)" : "rgba(255,255,255,0.03)",
+                border: pid === p.id ? "1.5px solid rgba(82,183,136,0.6)" : "1.5px solid rgba(255,255,255,0.06)",
+                borderRadius: 10, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
+              }}>
+                <ProfileIcon id={p.id} active={pid === p.id} />
+                <span style={{ fontSize: 7.5, color: pid === p.id ? "#fff" : "rgba(255,255,255,0.35)", fontFamily: "'Nunito',sans-serif", fontWeight: 700, textAlign: "center", lineHeight: 1.1 }}>{p.short}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Main content */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
+          <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)", padding: mob ? "12px" : "14px 16px" }}>
+
+            {/* Metal */}
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ ...lbl, color: "#52b788", textTransform: "uppercase", letterSpacing: "0.08em", fontSize: 10 }}>Металл</label>
+              <select value={metal} onChange={e => setMetal(e.target.value)} style={{ width: "100%", padding: "10px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#fff", fontSize: 15, fontFamily: "'Nunito',sans-serif", fontWeight: 600, cursor: "pointer" }}>
+                {Object.entries(METALS).map(([k, v]) => <option key={k} value={k} style={{ background: "#1a2f22" }}>{v.name} ({v.density} кг/м³)</option>)}
+              </select>
+            </div>
+
+            {/* Drawing + Fields — stacks vertically on mobile */}
+            <div style={{ display: "flex", flexDirection: mob ? "column" : "row", gap: mob ? 10 : 14, alignItems: mob ? "center" : "flex-start" }}>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
+                <TechDrawing profileId={pid} size={mob ? 130 : 160} />
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#52b788", fontFamily: "'Nunito',sans-serif", textAlign: "center" }}>{prof?.name}</span>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%" }}>
+                {/* Dimension inputs — always 2 cols, 1 col if single param */}
+                <div style={{ display: "grid", gridTemplateColumns: pKeys.length === 1 ? "1fr" : "1fr 1fr", gap: 8 }}>
+                  {pKeys.map((k, i) => { const d = PARAM_DEFS[k]; return (
+                    <div key={k}>
+                      <label style={lbl}><span style={{ color: "#52b788", fontWeight: 700, marginRight: 2 }}>{d.sym}</span> {d.label}, {d.unit}</label>
+                      <input ref={i === 0 ? fr : null} type="text" inputMode="decimal" pattern="[0-9.,]*" min="0" step="any" style={inp} value={params[k] || ""} onChange={e => setP(k, e.target.value)} placeholder="0" />
+                    </div>
+                  ); })}
+                </div>
+
+                {/* Wpm */}
+                {wpm > 0 && (
+                  <div style={{ background: "rgba(45,106,79,0.15)", borderRadius: 8, padding: "7px 12px", border: "1px solid rgba(82,183,136,0.2)", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>1 п.м.:</span>
+                    <span style={{ fontSize: 17, fontWeight: 700, color: "#52b788", fontFamily: "'JetBrains Mono',monospace" }}>{fmt(wpm)}</span>
+                    <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>кг/м</span>
+                  </div>
+                )}
+
+                {/* Length + Weight — 2 columns */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <div>
+                    <label style={lbl}>Длина, м</label>
+                    <input type="text" inputMode="decimal" pattern="[0-9.,]*" min="0" step="any" style={inp} value={length} onChange={e => hLen(e.target.value)} placeholder="0" />
+                  </div>
+                  <div>
+                    <label style={lbl}>Вес, кг</label>
+                    <input type="text" inputMode="decimal" pattern="[0-9.,]*" min="0" step="any" style={inp} value={weight} onChange={e => hWt(e.target.value)} placeholder="0" />
+                  </div>
+                </div>
+
+                {/* Qty + buttons — flex wrap for mobile */}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <div style={{ width: 70, flexShrink: 0 }}>
+                    <label style={lbl}>Шт</label>
+                    <input type="text" inputMode="numeric" pattern="[0-9]*" min="1" step="1" style={inp} value={qty} onChange={e => setQty(e.target.value)} />
+                  </div>
+                  <button onClick={addH} disabled={!canAdd} style={{ ...btn(canAdd, "linear-gradient(135deg,#e8a838,#d4882a)", "#1a1a1a"), flex: 1, minWidth: 90 }}>+ Добавить</button>
+                  <button onClick={() => setShowImport(true)} style={{ padding: mob ? "12px 14px" : "10px 14px", background: "rgba(82,183,136,0.1)", border: "1px solid rgba(82,183,136,0.3)", borderRadius: 8, color: "#52b788", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "'Nunito',sans-serif", WebkitAppearance: "none" }}>📥</button>
+                </div>
+
+                {/* Qty total */}
+                {parseFloat(weight) > 0 && (parseInt(qty) || 1) > 1 && (
+                  <div style={{ background: "rgba(45,106,79,0.15)", borderRadius: 8, padding: "7px 12px", border: "1px solid rgba(82,183,136,0.15)", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>{qty} × {fmt(parseFloat(weight))} =</span>
+                    <span style={{ fontSize: 17, fontWeight: 700, color: "#e8a838", fontFamily: "'JetBrains Mono',monospace" }}>{fmt(parseFloat(weight) * (parseInt(qty) || 1))} кг</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* History */}
+          {hist.length > 0 && (
+            <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)", padding: "12px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 6 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "#52b788", fontFamily: "'Nunito',sans-serif" }}>Позиции ({hist.length})</span>
+                <div style={{ display: "flex", gap: 5 }}>
+                  <button onClick={copyTSV} style={{ background: copied ? "rgba(82,183,136,0.2)" : "rgba(255,255,255,0.04)", border: "1px solid " + (copied ? "rgba(82,183,136,0.4)" : "rgba(255,255,255,0.07)"), borderRadius: 5, padding: "4px 10px", color: copied ? "#52b788" : "rgba(255,255,255,0.35)", fontSize: 10, cursor: "pointer", fontFamily: "'Nunito',sans-serif", fontWeight: 600 }}>{copied ? "✓" : "📋 Excel"}</button>
+                  <button onClick={() => setHist([])} style={{ background: "rgba(255,80,80,0.07)", border: "1px solid rgba(255,80,80,0.12)", borderRadius: 5, padding: "4px 10px", color: "#ff8080", fontSize: 10, cursor: "pointer", fontFamily: "'Nunito',sans-serif", fontWeight: 600 }}>Очистить</button>
+                </div>
+              </div>
+
+              {mob ? (
+                /* Mobile: cards */
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {hist.map((e, idx) => (
+                    <div key={e.id} onClick={() => loadH(e)} style={{ background: "rgba(255,255,255,0.02)", borderRadius: 8, padding: "10px 12px", border: "1px solid rgba(255,255,255,0.05)", cursor: "pointer", position: "relative" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                        <div>
+                          <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontFamily: "'JetBrains Mono',monospace", marginRight: 6 }}>{idx + 1}.</span>
+                          <span style={{ fontWeight: 700, fontSize: 13 }}>{e.prof}</span>
+                          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginLeft: 6 }}>{e.metal}</span>
+                        </div>
+                        <button onClick={ev => { ev.stopPropagation(); rmH(e.id); }} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.2)", cursor: "pointer", fontSize: 18, padding: 4, marginTop: -4, marginRight: -4 }}>×</button>
+                      </div>
+                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>
+                        {e.pk.map(k => e.params[k]).join("×")} мм · {e.len} м · {e.qty} шт
+                      </div>
+                      {e.desc && <div style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.desc}</div>}
+                      <div style={{ fontSize: 16, fontWeight: 700, color: "#52b788", fontFamily: "'JetBrains Mono',monospace", marginTop: 4 }}>{fmt(e.tw)} кг</div>
+                    </div>
+                  ))}
+                  <div style={{ padding: "10px 0 0", borderTop: "2px solid rgba(82,183,136,0.2)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontWeight: 700, fontSize: 14, fontFamily: "'Nunito',sans-serif" }}>ИТОГО</span>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: "#e8a838", fontFamily: "'JetBrains Mono',monospace" }}>{fmt(totW)} кг</div>
+                      {totW >= 1000 && <div style={{ fontSize: 12, color: "rgba(232,168,56,0.5)" }}>{fmt(totW / 1000)} т</div>}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* Desktop: table */
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                    <thead><tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                      {["#","Профиль","Металл","Размеры","Длина","Шт","Вес, кг",""].map((h,i) => <th key={i} style={{ padding: "4px 6px", textAlign: "left", color: "rgba(255,255,255,0.28)", fontWeight: 600, fontFamily: "'Nunito',sans-serif", fontSize: 10 }}>{h}</th>)}
+                    </tr></thead>
+                    <tbody>{hist.map((e, idx) => {
+                      const isEd = editId === e.id;
+                      const editInp = { background: "rgba(255,255,255,0.1)", border: "1px solid rgba(82,183,136,0.4)", borderRadius: 4, color: "#fff", padding: "3px 6px", fontFamily: "'JetBrains Mono',monospace", fontSize: 12, width: 70, outline: "none" };
+                      return (
+                      <tr key={e.id} onClick={() => { if (!isEd) loadH(e); }} style={{ borderBottom: "1px solid rgba(255,255,255,0.03)", cursor: "pointer", background: isEd ? "rgba(82,183,136,0.06)" : "transparent" }}
+                        onMouseEnter={ev => { if (!isEd) ev.currentTarget.style.background = "rgba(82,183,136,0.08)"; }}
+                        onMouseLeave={ev => { if (!isEd) ev.currentTarget.style.background = "transparent"; }}>
+                        <td style={{ padding: "5px 6px", color: "rgba(255,255,255,0.2)", fontSize: 10, fontFamily: "'JetBrains Mono',monospace" }}>{idx + 1}</td>
+                        <td style={{ padding: "5px 6px", fontWeight: 600, fontSize: 11 }}>{e.prof}</td>
+                        <td style={{ padding: "5px 6px", color: "rgba(255,255,255,0.45)", fontSize: 11 }}>{e.metal}</td>
+                        <td style={{ padding: "5px 6px", fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: "rgba(255,255,255,0.35)" }}>{e.pk.map(k => e.params[k]).join("×")}</td>
+                        <td style={{ padding: "3px 6px" }}>{isEd
+                          ? <input type="text" inputMode="decimal" value={editLen} onChange={ev => setEditLen(ev.target.value)} onKeyDown={ev => { if (ev.key === "Enter") saveEdit(e); if (ev.key === "Escape") setEditId(null); }} autoFocus style={editInp} />
+                          : <span onDoubleClick={ev => startEdit(e, ev)} style={{ fontFamily: "'JetBrains Mono',monospace", cursor: "text" }}>{e.len}</span>
+                        }</td>
+                        <td style={{ padding: "3px 6px" }}>{isEd
+                          ? <input type="text" inputMode="numeric" value={editQty} onChange={ev => setEditQty(ev.target.value)} onKeyDown={ev => { if (ev.key === "Enter") saveEdit(e); if (ev.key === "Escape") setEditId(null); }} style={{ ...editInp, width: 44 }} />
+                          : <span onDoubleClick={ev => startEdit(e, ev)} style={{ fontFamily: "'JetBrains Mono',monospace", cursor: "text" }}>{e.qty}</span>
+                        }</td>
+                        <td style={{ padding: "5px 6px", fontFamily: "'JetBrains Mono',monospace", color: "#52b788", fontWeight: 600 }}>{fmt(isEd ? (() => { const np2 = {}; e.pk.forEach(k => { np2[k] = parseFloat(e.params[k]) || 0; }); const a = calcArea(e.profileId, np2); const w2 = a > 0 ? (a / 1e6) * METALS[e.metalKey].density : 0; return w2 * (parseFloat(editLen) || 0) * (parseInt(editQty) || 0); })() : e.tw)}</td>
+                        <td style={{ padding: "3px 6px", whiteSpace: "nowrap" }}>{isEd
+                          ? <><button onClick={ev => { ev.stopPropagation(); saveEdit(e); }} style={{ background: "none", border: "none", color: "#52b788", cursor: "pointer", fontSize: 14, padding: "0 4px" }}>✓</button><button onClick={ev => { ev.stopPropagation(); setEditId(null); }} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.2)", cursor: "pointer", fontSize: 14, padding: "0 4px" }}>✕</button></>
+                          : <button onClick={ev => { ev.stopPropagation(); rmH(e.id); }} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.15)", cursor: "pointer", fontSize: 14 }}>×</button>
+                        }</td>
+                      </tr>);
+                    })}</tbody>
+                    <tfoot>
+                      <tr style={{ borderTop: "2px solid rgba(82,183,136,0.2)" }}>
+                        <td colSpan={6} style={{ padding: "8px 6px", fontWeight: 700, fontSize: 13, fontFamily: "'Nunito',sans-serif" }}>ИТОГО</td>
+                        <td style={{ padding: "8px 6px", fontFamily: "'JetBrains Mono',monospace", color: "#e8a838", fontWeight: 700, fontSize: 15 }}>{fmt(totW)} кг</td><td></td>
+                      </tr>
+                      {totW >= 1000 && <tr><td colSpan={6}></td><td style={{ padding: "1px 6px 6px", fontFamily: "'JetBrains Mono',monospace", color: "rgba(232,168,56,0.5)", fontSize: 12 }}>{fmt(totW / 1000)} т</td><td></td></tr>}
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Import Modal */}
+      {showImport && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: mob ? "flex-end" : "center", justifyContent: "center", zIndex: 1000 }} onClick={() => { setShowImport(false); setImportError(""); setImportStatus(""); }}>
+          <div style={{ background: "linear-gradient(160deg,#122118,#1a2f22)", borderRadius: mob ? "16px 16px 0 0" : 16, border: "1px solid rgba(82,183,136,0.3)", padding: mob ? "16px 14px 24px" : "24px", maxWidth: 560, width: "100%", maxHeight: mob ? "80vh" : "85vh", overflow: "auto" }} onClick={e => e.stopPropagation()}>
+            
+            {/* Header */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <h2 style={{ fontFamily: "'Nunito',sans-serif", fontSize: 16, fontWeight: 800, color: "#fff" }}>📥 Импорт заявки</h2>
+              <button onClick={() => { setShowImport(false); setImportError(""); setImportStatus(""); }} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.3)", cursor: "pointer", fontSize: 22, padding: 4 }}>×</button>
+            </div>
+
+            {/* Tabs */}
+            <div style={{ display: "flex", gap: 4, marginBottom: 14 }}>
+              {[
+                { id: "text", label: "📝 Текст", icon: "" },
+                { id: "file", label: "📁 Файл", icon: "" },
+                { id: "photo", label: "📷 Фото", icon: "" },
+              ].map(t => (
+                <button key={t.id} onClick={() => { setImportTab(t.id); setImportError(""); setImportStatus(""); }} style={{
+                  flex: 1, padding: "9px 8px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700,
+                  fontFamily: "'Nunito',sans-serif", border: "none",
+                  background: importTab === t.id ? "rgba(82,183,136,0.2)" : "rgba(255,255,255,0.04)",
+                  color: importTab === t.id ? "#52b788" : "rgba(255,255,255,0.35)",
+                }}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Loading overlay */}
+            {importStatus && (
+              <div style={{ background: "rgba(45,106,79,0.2)", borderRadius: 10, padding: "16px", marginBottom: 12, textAlign: "center", border: "1px solid rgba(82,183,136,0.2)" }}>
+                <div style={{ fontSize: 20, marginBottom: 6 }}>⏳</div>
+                <div style={{ fontSize: 13, color: "#52b788", fontWeight: 600 }}>{importStatus}</div>
+              </div>
+            )}
+
+            {/* Error */}
+            {importError && (
+              <div style={{ background: "rgba(255,80,80,0.1)", borderRadius: 8, padding: "10px 14px", marginBottom: 12, border: "1px solid rgba(255,80,80,0.2)", fontSize: 12, color: "#ff8080" }}>
+                {importError}
+              </div>
+            )}
+
+            {/* Tab: Text */}
+            {importTab === "text" && !importStatus && (
+              <div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 8, lineHeight: 1.5 }}>
+                  Вставьте текст из Word, PDF или CSV. Парсер автоматически найдёт размеры в скобках, например <span style={{ color: "#52b788" }}>(168.3x14.27)</span>
+                </div>
+                <textarea value={importText} onChange={e => setImportText(e.target.value)} placeholder={importExample}
+                  style={{ width: "100%", height: mob ? 120 : 150, padding: 12, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, color: "#fff", fontSize: 13, fontFamily: "'JetBrains Mono',monospace", outline: "none", resize: "vertical", lineHeight: 1.6 }} />
+                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                  <button onClick={() => setImportText(importExample)} style={{ padding: "10px 16px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "rgba(255,255,255,0.5)", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'Nunito',sans-serif" }}>Пример</button>
+                  <button onClick={() => parseImport(importText)} disabled={!importText.trim()} style={{ flex: 1, padding: "10px 20px", background: importText.trim() ? "linear-gradient(135deg,#e8a838,#d4882a)" : "rgba(255,255,255,0.04)", border: "none", borderRadius: 8, color: importText.trim() ? "#1a1a1a" : "rgba(255,255,255,0.15)", fontSize: 14, fontWeight: 700, cursor: importText.trim() ? "pointer" : "default", fontFamily: "'Nunito',sans-serif" }}>Загрузить</button>
+                </div>
+              </div>
+            )}
+
+            {/* Tab: File (Excel / CSV / PDF) */}
+            {importTab === "file" && !importStatus && (
+              <div>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginBottom: 12, lineHeight: 1.5 }}>
+                  Загрузите файл с заявкой. Поддерживаются:
+                  <span style={{ color: "#52b788" }}> .xlsx, .csv, .tsv, .pdf</span>
+                </div>
+                <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv,.tsv,.txt,.pdf,.doc,.docx" style={{ display: "none" }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const ext = file.name.split(".").pop().toLowerCase();
+                    if (ext === "pdf") handlePDF(e);
+                    else if (ext === "doc" || ext === "docx") handleDocx(file);
+                    else handleFile(e);
+                    if (fileRef.current) fileRef.current.value = "";
+                  }} />
+                <button onClick={() => fileRef.current?.click()} style={{
+                  width: "100%", padding: "28px 20px", borderRadius: 12, cursor: "pointer",
+                  background: "rgba(255,255,255,0.03)", border: "2px dashed rgba(82,183,136,0.3)",
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
+                }}>
+                  <span style={{ fontSize: 32 }}>📁</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: "#52b788", fontFamily: "'Nunito',sans-serif" }}>Выберите файл</span>
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>Excel, CSV, Word или PDF</span>
+                </button>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", marginTop: 10, lineHeight: 1.5 }}>
+                  PDF и Word обрабатываются через AI — может занять 10-15 секунд
+                </div>
+              </div>
+            )}
+
+            {/* Tab: Photo */}
+            {importTab === "photo" && !importStatus && (
+              <div>
+                {mob && (
+                  <div style={{ background: "rgba(232,168,56,0.1)", border: "1px solid rgba(232,168,56,0.3)", borderRadius: 10, padding: "12px 14px", marginBottom: 12 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#e8a838", marginBottom: 4 }}>📱 На мобильном AI-распознавание ограничено</div>
+                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", lineHeight: 1.5 }}>
+                      Отправьте фото/скриншот мне в чат — я распознаю и подготовлю текст для вставки через вкладку «Текст».
+                      На десктопе AI-загрузка работает напрямую.
+                    </div>
+                  </div>
+                )}
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginBottom: 12, lineHeight: 1.5 }}>
+                  {mob ? "Можно попробовать загрузить:" : "Сфотографируйте заявку, загрузите скриншот, или"} <span style={{ color: "#52b788" }}>{mob ? "" : "вставьте из буфера (Ctrl+V)"}</span>
+                </div>
+                {/* Two separate inputs — fixes iPhone bug with dynamic capture attribute */}
+                <input ref={galleryRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handlePhoto} />
+                <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={handlePhoto} />
+                <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                  <button onClick={() => galleryRef.current?.click()} style={{
+                    flex: 1, padding: "24px 16px", borderRadius: 12, cursor: "pointer",
+                    background: "rgba(255,255,255,0.03)", border: "2px dashed rgba(82,183,136,0.3)",
+                    display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+                  }}>
+                    <span style={{ fontSize: 28 }}>🖼</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#52b788", fontFamily: "'Nunito',sans-serif" }}>Из галереи</span>
+                  </button>
+                  <button onClick={() => cameraRef.current?.click()} style={{
+                    flex: 1, padding: "24px 16px", borderRadius: 12, cursor: "pointer",
+                    background: "rgba(255,255,255,0.03)", border: "2px dashed rgba(82,183,136,0.3)",
+                    display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+                  }}>
+                    <span style={{ fontSize: 28 }}>📷</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#52b788", fontFamily: "'Nunito',sans-serif" }}>Камера</span>
+                  </button>
+                </div>
+                {/* Paste zone — desktop only */}
+                {!mob && (
+                  <div style={{
+                    padding: "14px", borderRadius: 10, textAlign: "center",
+                    background: "rgba(82,183,136,0.05)", border: "1px dashed rgba(82,183,136,0.2)",
+                  }}>
+                    <span style={{ fontSize: 12, color: "rgba(82,183,136,0.6)" }}>📋 Ctrl+V — вставить скриншот из буфера</span>
+                  </div>
+                )}
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", marginTop: 8, lineHeight: 1.5 }}>
+                  {mob ? "Совет: отправьте фото в чат с Claude, скопируйте результат → вкладка «Текст»" : "AI обработка ~10-20 сек. Лучше работает с чёткими фото таблиц."}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+ReactDOM.createRoot(document.getElementById("root")).render(<MetalCalculator />);
+</script>
+</body>
+</html>
