@@ -290,7 +290,7 @@ function MetalCalculator() {
   const pKeys = PARAMS_MAP[pid] || [];
   const dens = METALS[metal].density;
 
-  useEffect(() => { setParams({}); setWeight(""); setLength(prof?.dLen ? String(prof.dLen) : ""); setLastE("length"); setTimeout(() => fr.current?.focus(), 50); }, [pid]);
+  useEffect(() => { setParams({}); setWeight(""); setLength(prof?.dLen ? String(prof.dLen) : ""); setQty("1"); setLastE("length"); setTimeout(() => fr.current?.focus(), 50); }, [pid]);
 
   const fixNum = (v) => v.replace(/[,،٫⸴]/g, ".").replace(/\s/g, "");
   /* Auto-sync pairs: B follows A until user manually edits B */
@@ -334,9 +334,9 @@ function MetalCalculator() {
     if (!isSheet) return;
     const L = parseFloat(params.sheetLength) || 0;
     if (L > 0) setLength((L / 1000).toFixed(3));
+    setQty("1");
     if (sheetWeight > 0) {
-      const q = parseFloat(qty) || 1;
-      setWeight((sheetWeight * q).toFixed(2));
+      setWeight(sheetWeight.toFixed(2));
     } else setWeight("");
     setLastE("length");
   }, [isSheet, params.sheetLength, sheetWeight]);
