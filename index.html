@@ -242,7 +242,39 @@ function TechDrawing({ profileId, size }) {
     rebar: <g><circle cx={M} cy={MY} r={38} {...hf} />{[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15].map(i=>{const a=(i/16)*Math.PI*2;return <line key={i} x1={M+36*Math.cos(a)} y1={MY+36*Math.sin(a)} x2={M+44*Math.cos(a)} y2={MY+44*Math.sin(a)} stroke="#52b788" strokeWidth="1.8" strokeLinecap="round" />;})}<line x1={M-44} y1={30} x2={M+44} y2={30} {...dm} /><line x1={M-44} y1={40} x2={M-44} y2={26} {...dl} /><line x1={M+44} y1={40} x2={M+44} y2={26} {...dl} /><text x={M} y={25} {...lb}>D</text></g>,
     square_bar: <g><rect x={44} y={48} width={72} height={72} {...hf} /><line x1={44} y1={132} x2={116} y2={132} {...dm} /><line x1={44} y1={120} x2={44} y2={136} {...dl} /><line x1={116} y1={120} x2={116} y2={136} {...dl} /><text x={M} y={145} {...lb}>a</text></g>,
     hex_bar: (()=>{const r=40;const pts=[0,1,2,3,4,5].map(i=>{const a=Math.PI/6+(i*Math.PI)/3;return`${M+r*Math.cos(a)},${MY+r*Math.sin(a)}`;}).join(" ");const xO=r*Math.cos(Math.PI/6);return <g><polygon points={pts} {...hf} /><line x1={M-xO} y1={134} x2={M+xO} y2={134} {...dm} /><line x1={M-xO} y1={MY+r*0.5+2} x2={M-xO} y2={138} {...dl} /><line x1={M+xO} y1={MY+r*0.5+2} x2={M+xO} y2={138} {...dl} /><text x={M} y={147} {...lb}>S</text></g>;})(),
-    sheet: <g><rect x={20} y={74} width={120} height={20} {...hf} /><line x1={20} y1={106} x2={140} y2={106} {...dm} /><line x1={20} y1={94} x2={20} y2={110} {...dl} /><line x1={140} y1={94} x2={140} y2={110} {...dl} /><text x={M} y={119} {...lb}>W</text><line x1={20} y1={64} x2={140} y2={64} {...dm} /><line x1={20} y1={60} x2={20} y2={74} {...dl} /><line x1={140} y1={60} x2={140} y2={74} {...dl} /><text x={M} y={59} {...ls}>L</text><line x1={150} y1={74} x2={150} y2={94} {...dm} /><line x1={140} y1={74} x2={154} y2={74} {...dl} /><line x1={140} y1={94} x2={154} y2={94} {...dl} /><text x={155} y={87} {...ls}>t</text></g>,
+    sheet: (()=>{
+      /* Isometric 3D sheet — clean, no break lines */
+      const ox=14,oy=112;
+      const fw=88; /* front width (W) */
+      const dt=16; /* thickness (t) */
+      const dx=52,dy=-26; /* iso depth (L) */
+      /* Bottom corners */
+      const b0=[ox,oy], b1=[ox+fw,oy], b2=[ox+fw+dx,oy+dy], b3=[ox+dx,oy+dy];
+      /* Top corners */
+      const t0=[ox,oy-dt], t1=[ox+fw,oy-dt], t2=[ox+fw+dx,oy-dt+dy], t3=[ox+dx,oy-dt+dy];
+      const face=(pts)=>pts.map(p=>p.join(",")).join(" ");
+      return <g>
+        {/* Three faces */}
+        <polygon points={face([b0,b1,t1,t0])} fill="url(#hD)" stroke="#52b788" strokeWidth={1.5} strokeLinejoin="round" />
+        <polygon points={face([t0,t1,t2,t3])} fill="rgba(82,183,136,0.12)" stroke="#52b788" strokeWidth={1.5} strokeLinejoin="round" />
+        <polygon points={face([b1,b2,t2,t1])} fill="rgba(45,106,79,0.25)" stroke="#52b788" strokeWidth={1.5} strokeLinejoin="round" />
+        {/* W — bottom front */}
+        <line x1={b0[0]} y1={b0[1]+11} x2={b1[0]} y2={b1[1]+11} {...dm} />
+        <line x1={b0[0]} y1={b0[1]+1} x2={b0[0]} y2={b0[1]+15} {...dl} />
+        <line x1={b1[0]} y1={b1[1]+1} x2={b1[0]} y2={b1[1]+15} {...dl} />
+        <text x={(b0[0]+b1[0])/2} y={b0[1]+24} {...lb}>W</text>
+        {/* L — along right side going back (b1→b2 direction, offset right) */}
+        <line x1={b1[0]+10} y1={b1[1]+2} x2={b2[0]+10} y2={b2[1]+2} {...dm} />
+        <line x1={b1[0]} y1={b1[1]} x2={b1[0]+14} y2={b1[1]+3} {...dl} />
+        <line x1={b2[0]} y1={b2[1]} x2={b2[0]+14} y2={b2[1]+3} {...dl} />
+        <text x={(b1[0]+b2[0])/2+18} y={(b1[1]+b2[1])/2+15} {...ls}>L</text>
+        {/* t — left front corner height (b0→t0) */}
+        <line x1={b0[0]-9} y1={b0[1]} x2={t0[0]-9} y2={t0[1]} {...dm} />
+        <line x1={b0[0]} y1={b0[1]} x2={b0[0]-13} y2={b0[1]} {...dl} />
+        <line x1={t0[0]} y1={t0[1]} x2={t0[0]-13} y2={t0[1]} {...dl} />
+        <text x={b0[0]-9} y={t0[1]-8} {...lb} textAnchor="middle">t</text>
+      </g>;
+    })(),
     angle: <g><path d={`M52 40L52 120L120 120L120 108L65 108L65 40Z`} {...hf} /><line x1={52} y1={134} x2={120} y2={134} {...dm} /><line x1={52} y1={120} x2={52} y2={138} {...dl} /><line x1={120} y1={120} x2={120} y2={138} {...dl} /><text x={86} y={147} {...lb}>b</text><line x1={38} y1={40} x2={38} y2={120} {...dm} /><line x1={52} y1={40} x2={34} y2={40} {...dl} /><line x1={52} y1={120} x2={34} y2={120} {...dl} /><text x={30} y={82} {...ls}>a</text><line x1={52} y1={30} x2={65} y2={30} {...dm} /><line x1={52} y1={40} x2={52} y2={26} {...dl} /><line x1={65} y1={40} x2={65} y2={26} {...dl} /><text x={59} y={25} {...ls}>t</text></g>,
     channel: <g><path d={`M58 38L108 38L108 50L72 50L72 110L108 110L108 122L58 122Z`} {...hf} /><line x1={44} y1={38} x2={44} y2={122} {...dm} /><line x1={58} y1={38} x2={40} y2={38} {...dl} /><line x1={58} y1={122} x2={40} y2={122} {...dl} /><text x={34} y={84} {...lb}>H</text><line x1={58} y1={26} x2={108} y2={26} {...dm} /><line x1={58} y1={38} x2={58} y2={22} {...dl} /><line x1={108} y1={38} x2={108} y2={22} {...dl} /><text x={83} y={22} {...lb}>b</text><line x1={58} y1={80} x2={72} y2={80} {...dm} /><text x={65} y={76} {...ls}>s</text><line x1={120} y1={110} x2={120} y2={122} {...dm} /><line x1={108} y1={110} x2={124} y2={110} {...dl} /><line x1={108} y1={122} x2={124} y2={122} {...dl} /><text x={130} y={119} {...ls}>t</text></g>,
     beam: <g><path d={`M50 38L110 38L110 50L86 50L86 110L110 110L110 122L50 122L50 110L74 110L74 50L50 50Z`} {...hf} /><line x1={36} y1={38} x2={36} y2={122} {...dm} /><line x1={50} y1={38} x2={32} y2={38} {...dl} /><line x1={50} y1={122} x2={32} y2={122} {...dl} /><text x={26} y={84} {...lb}>H</text><line x1={50} y1={26} x2={110} y2={26} {...dm} /><line x1={50} y1={38} x2={50} y2={22} {...dl} /><line x1={110} y1={38} x2={110} y2={22} {...dl} /><text x={M} y={22} {...lb}>b</text><line x1={74} y1={80} x2={86} y2={80} {...dm} /><text x={M} y={76} {...ls}>s</text><line x1={122} y1={110} x2={122} y2={122} {...dm} /><line x1={110} y1={110} x2={126} y2={110} {...dl} /><line x1={110} y1={122} x2={126} y2={122} {...dl} /><text x={132} y={119} {...ls}>t</text></g>,
