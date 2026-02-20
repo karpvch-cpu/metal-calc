@@ -24,9 +24,9 @@ const METALS = {
   ss316: { name: "316 / 316L", density: 7980, group: "Нержавейка", search: "08х17н13м2 10х17н13м2т aisi316 1.4401 1.4404 tp316 s31600 s31603" },
   ss310: { name: "310 / 310S", density: 7980, group: "Нержавейка", search: "10х23н18 aisi310 1.4845 tp310 s31000 s31008" },
   ss347: { name: "347 / 347H", density: 7960, group: "Нержавейка", search: "08х18н12б aisi347 1.4550 tp347 s34700" },
-  ss904: { name: "904L", density: 7990, group: "Нержавейка", search: "06хн28мдт 1.4539 n08904 s08904" },
+  ss904: { name: "904L", density: 8050, group: "Нержавейка", search: "06хн28мдт 1.4539 n08904 s08904" },
   /* ── Нержавеющая — дуплекс ── */
-  dup2205: { name: "Дуплекс 2205", density: 7800, group: "Дуплекс", search: "s32205 s31803 1.4462 saf2205 duplex" },
+  dup2205: { name: "Дуплекс 2205", density: 7780, group: "Дуплекс", search: "s32205 s31803 1.4462 saf2205 duplex" },
   dup2507: { name: "Супердуплекс 2507", density: 7800, group: "Дуплекс", search: "s32750 1.4410 saf2507 superduplex" },
   /* ── Нержавеющая — ферритная/мартенситная ── */
   ss430: { name: "430 (ферритная)", density: 7700, group: "Нержавейка", search: "12х17 aisi430 1.4016 s43000 ferrit" },
@@ -46,6 +46,9 @@ const METALS = {
   copper: { name: "Медь", density: 8900, group: "Цветные", search: "м1 м2 cu c11000" },
   brass: { name: "Латунь", density: 8500, group: "Цветные", search: "л63 л68 лс59 cuzn" },
   bronze: { name: "Бронза", density: 8800, group: "Цветные", search: "браж броф бронз cusnzn" },
+  cuni9510: { name: "CuNi 95/5 (МНЖ 5-1)", density: 8700, group: "Медно-никелевые", search: "мнж5 95/5 c70400 cuni95 cupronickel" },
+  cuni9010: { name: "CuNi 90/10 (МНЖМц 10-1-1)", density: 8900, group: "Медно-никелевые", search: "мнжмц10 90/10 c70600 2.0872 cuni9010 cupronickel мельхиор" },
+  cuni7030: { name: "CuNi 70/30 (МНЖМц 30-1-1)", density: 8900, group: "Медно-никелевые", search: "мнжмц30 70/30 c71500 2.0882 cuni7030 мельхиор cupronickel" },
   titanium_gr2: { name: "Титан Grade 2", density: 4510, group: "Цветные", search: "вт1-0 grade2 r50400 3.7035 титан" },
   titanium_gr5: { name: "Титан Grade 5", density: 4430, group: "Цветные", search: "вт6 grade5 r56400 3.7165 ti6al4v титан" },
   cast_iron: { name: "Чугун", density: 7200, group: "Цветные", search: "сч чугун cast iron" },
@@ -53,7 +56,7 @@ const METALS = {
   lead: { name: "Свинец", density: 11340, group: "Цветные", search: "свинец lead pb" },
 };
 
-const METAL_GROUPS = ["Сталь", "Нержавейка", "Дуплекс", "Никель", "Цветные"];
+const METAL_GROUPS = ["Сталь", "Нержавейка", "Дуплекс", "Никель", "Медно-никелевые", "Цветные"];
 
 const PROFILES = [
   { id: "rebar", name: "Арматура", short: "Армат.", dLen: 12 },
@@ -74,6 +77,7 @@ const PARAM_DEFS = {
   sideA: { label: "Сторона A", unit: "мм", sym: "A" },
   sideB: { label: "Сторона B", unit: "мм", sym: "B" },
   side: { label: "Сторона", unit: "мм", sym: "a" },
+  hexSize: { label: "Под ключ", unit: "мм", sym: "S" },
   width: { label: "Ширина", unit: "мм", sym: "W" },
   sheetLength: { label: "Длина", unit: "мм", sym: "L" },
   thickness: { label: "Толщина", unit: "мм", sym: "t" },
@@ -90,7 +94,7 @@ const PARAMS_MAP = {
   circle: ["diameter"],
   rebar: ["diameter"],
   square_bar: ["side"],
-  hex_bar: ["side"],
+  hex_bar: ["hexSize"],
   sheet: ["width", "sheetLength", "thickness"],
   angle: ["shelfWidth", "shelfB", "thickness"],
   channel: ["height", "shelfWidth", "webThickness", "flangeThickness"],
@@ -104,7 +108,7 @@ function calcArea(id, p) {
     case "circle": return Math.PI * (p.diameter / 2) ** 2;
     case "rebar": return Math.PI * (p.diameter / 2) ** 2;
     case "square_bar": return p.side * p.side;
-    case "hex_bar": return (Math.sqrt(3) / 2) * p.side ** 2;
+    case "hex_bar": return (Math.sqrt(3) / 2) * p.hexSize ** 2;
     case "sheet": return p.width * p.thickness;
     case "angle": { const t = p.thickness, a = p.shelfWidth, b = p.shelfB || a; const Rmap = {20:2.4,25:2.1,28:2.4,30:2.4,32:2.8,35:2.8,40:3.2,45:3.1,50:3.4,56:4.0,60:4.4,63:4.4,65:4.4,70:4.9,75:5.6,80:5.6,90:6.3,100:7.5,110:7.5,120:9.0,125:9.0,140:10.0,150:10.0,160:11.0,180:12.0,200:13.0,250:16.0}; const R = Rmap[a] || (a * 0.07); return (a + b - t) * t + (4 - Math.PI) / 2 * R * R; }
     case "channel": { const { height: H, shelfWidth: b, webThickness: tw, flangeThickness: tf } = p; const R = 0.024 * H + 4.8, r = 0.01 * H + 2.0; return (H - 2 * tf) * tw + 2 * b * tf + (4 - Math.PI) / 2 * R * R - (4 - Math.PI) * r * r; }
@@ -137,7 +141,7 @@ function MetalPicker({ value, onChange, mob }) {
 
   const select = (k) => { onChange(k); setOpen(false); setQ(""); };
 
-  const groupColor = { "Сталь": "#a0aec0", "Нержавейка": "#52b788", "Дуплекс": "#e8a838", "Никель": "#c084fc", "Цветные": "#60a5fa" };
+  const groupColor = { "Сталь": "#a0aec0", "Нержавейка": "#52b788", "Дуплекс": "#e8a838", "Никель": "#c084fc", "Цветные": "#60a5fa", "Медно-никелевые": "#f0a0c0" };
 
   const renderItem = ([k, m]) => (
     <div key={k} onClick={() => select(k)} style={{
@@ -155,13 +159,13 @@ function MetalPicker({ value, onChange, mob }) {
     <div ref={ref} style={{ position: "relative" }}>
       <div onClick={() => { setOpen(!open); setQ(""); }} style={{
         width: "100%", padding: "10px 12px", background: "rgba(255,255,255,0.06)", border: open ? "1px solid rgba(82,183,136,0.5)" : "1px solid rgba(255,255,255,0.1)",
-        borderRadius: 8, color: "#fff", fontSize: 14, fontFamily: "'Nunito',sans-serif", fontWeight: 600, cursor: "pointer",
+        borderRadius: 8, color: "#fff", fontSize: 16, fontFamily: "'Nunito',sans-serif", fontWeight: 600, cursor: "pointer",
         display: "flex", justifyContent: "space-between", alignItems: "center",
       }}>
         <span>
           <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 4, background: groupColor[cur?.group] || "#52b788", marginRight: 8 }}></span>
           {cur?.name}
-          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginLeft: 6 }}>({cur?.density} кг/м³)</span>
+          <span style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", marginLeft: 6 }}>({cur?.density} кг/м³)</span>
         </span>
         <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>{open ? "▲" : "▼"}</span>
       </div>
@@ -999,9 +1003,9 @@ Example output:
     }
   };
 
-  const inp = { width: "100%", padding: mob ? "12px" : "10px 12px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, color: "#fff", fontSize: 16, fontFamily: "'JetBrains Mono',monospace", outline: "none", WebkitAppearance: "none", appearance: "none", MozAppearance: "textfield" };
-  const lbl = { fontSize: 11, color: "rgba(255,255,255,0.45)", display: "block", marginBottom: 4, fontFamily: "'Nunito',sans-serif", fontWeight: 600 };
-  const btn = (active, bg, clr) => ({ padding: mob ? "12px 16px" : "10px 14px", background: active ? bg : "rgba(255,255,255,0.04)", border: "none", borderRadius: 8, color: active ? clr : "rgba(255,255,255,0.15)", fontSize: 14, fontWeight: 700, cursor: active ? "pointer" : "default", fontFamily: "'Nunito',sans-serif", WebkitAppearance: "none" });
+  const inp = { width: "100%", padding: mob ? "12px" : "10px 12px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, color: "#fff", fontSize: 18, fontFamily: "'JetBrains Mono',monospace", outline: "none", WebkitAppearance: "none", appearance: "none", MozAppearance: "textfield" };
+  const lbl = { fontSize: 13, color: "rgba(255,255,255,0.45)", display: "block", marginBottom: 4, fontFamily: "'Nunito',sans-serif", fontWeight: 600 };
+  const btn = (active, bg, clr) => ({ padding: mob ? "12px 16px" : "10px 14px", background: active ? bg : "rgba(255,255,255,0.04)", border: "none", borderRadius: 8, color: active ? clr : "rgba(255,255,255,0.15)", fontSize: 16, fontWeight: 700, cursor: active ? "pointer" : "default", fontFamily: "'Nunito',sans-serif", WebkitAppearance: "none" });
 
   return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(160deg,#0b1a0f,#122118 40%,#1a2f22)", fontFamily: "'Segoe UI',-apple-system,sans-serif", color: "#e8f0ea", WebkitTextSizeAdjust: "100%" }}>
@@ -1016,8 +1020,8 @@ Example output:
 
       {/* Header */}
       <div style={{ background: "linear-gradient(135deg,#2d6a4f,#1b4332)", padding: mob ? "10px 14px" : "12px 18px", display: "flex", alignItems: "center", gap: 10 }}>
-        <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,0.12)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, flexShrink: 0 }}>⚙️</div>
-        <h1 style={{ fontFamily: "'Nunito',sans-serif", fontSize: mob ? 15 : 18, fontWeight: 800, color: "#fff" }}>Калькулятор металлопроката</h1>
+        <div style={{ width: 36, height: 36, borderRadius: 8, background: "rgba(255,255,255,0.12)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, flexShrink: 0 }}>⚙️</div>
+        <h1 style={{ fontFamily: "'Nunito',sans-serif", fontSize: mob ? 17 : 20, fontWeight: 800, color: "#fff" }}>Калькулятор металлопроката</h1>
       </div>
 
       {/* Mobile: horizontal profile scroll */}
@@ -1032,7 +1036,7 @@ Example output:
                 borderRadius: 10, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 1, WebkitAppearance: "none",
               }}>
                 <ProfileIcon id={p.id} active={pid === p.id} />
-                <span style={{ fontSize: 7, color: pid === p.id ? "#fff" : "rgba(255,255,255,0.35)", fontFamily: "'Nunito',sans-serif", fontWeight: 700, textAlign: "center", lineHeight: 1.1 }}>{p.short}</span>
+                <span style={{ fontSize: 8.5, color: pid === p.id ? "#fff" : "rgba(255,255,255,0.35)", fontFamily: "'Nunito',sans-serif", fontWeight: 700, textAlign: "center", lineHeight: 1.1 }}>{p.short}</span>
               </button>
             ))}
             {/* Spacer so last icon isn't hidden by fade */}
@@ -1055,13 +1059,13 @@ Example output:
           <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
             {PROFILES.map(p => (
               <button key={p.id} onClick={() => setPid(p.id)} title={p.name} style={{
-                width: 58, minHeight: 52, flexShrink: 0, padding: "4px 2px 2px",
+                width: 64, minHeight: 56, flexShrink: 0, padding: "4px 2px 2px",
                 background: pid === p.id ? "linear-gradient(135deg,#2d6a4f,#40916c)" : "rgba(255,255,255,0.03)",
                 border: pid === p.id ? "1.5px solid rgba(82,183,136,0.6)" : "1.5px solid rgba(255,255,255,0.06)",
                 borderRadius: 10, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
               }}>
                 <ProfileIcon id={p.id} active={pid === p.id} />
-                <span style={{ fontSize: 7.5, color: pid === p.id ? "#fff" : "rgba(255,255,255,0.35)", fontFamily: "'Nunito',sans-serif", fontWeight: 700, textAlign: "center", lineHeight: 1.1 }}>{p.short}</span>
+                <span style={{ fontSize: 9, color: pid === p.id ? "#fff" : "rgba(255,255,255,0.35)", fontFamily: "'Nunito',sans-serif", fontWeight: 700, textAlign: "center", lineHeight: 1.1 }}>{p.short}</span>
               </button>
             ))}
           </div>
@@ -1073,7 +1077,7 @@ Example output:
 
             {/* Metal — searchable autocomplete */}
             <div style={{ marginBottom: 12, position: "relative" }}>
-              <label style={{ ...lbl, color: "#52b788", textTransform: "uppercase", letterSpacing: "0.08em", fontSize: 10 }}>МЕТАЛЛ</label>
+              <label style={{ ...lbl, color: "#52b788", textTransform: "uppercase", letterSpacing: "0.08em", fontSize: 12 }}>МЕТАЛЛ</label>
               <MetalPicker value={metal} onChange={setMetal} mob={mob} />
             </div>
 
@@ -1081,7 +1085,7 @@ Example output:
             <div style={{ display: "flex", flexDirection: mob ? "column" : "row", gap: mob ? 10 : 14, alignItems: mob ? "center" : "flex-start" }}>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
                 <TechDrawing profileId={pid} size={mob ? 130 : 160} />
-                <span style={{ fontSize: 12, fontWeight: 700, color: "#52b788", fontFamily: "'Nunito',sans-serif", textAlign: "center" }}>{prof?.name}</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: "#52b788", fontFamily: "'Nunito',sans-serif", textAlign: "center" }}>{prof?.name}</span>
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%" }}>
@@ -1098,9 +1102,9 @@ Example output:
                 {/* Wpm (not for sheet — sheet has its own block below) */}
                 {!isSheet && wpm > 0 && (
                   <div style={{ background: "rgba(45,106,79,0.15)", borderRadius: 8, padding: "7px 12px", border: "1px solid rgba(82,183,136,0.2)", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>1 п.м.:</span>
-                    <span style={{ fontSize: 17, fontWeight: 700, color: "#52b788", fontFamily: "'JetBrains Mono',monospace" }}>{fmt(wpm)}</span>
-                    <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>кг/м</span>
+                    <span style={{ fontSize: 14, color: "rgba(255,255,255,0.4)" }}>1 п.м.:</span>
+                    <span style={{ fontSize: 19, fontWeight: 700, color: "#52b788", fontFamily: "'JetBrains Mono',monospace" }}>{fmt(wpm)}</span>
+                    <span style={{ fontSize: 14, color: "rgba(255,255,255,0.3)" }}>кг/м</span>
                   </div>
                 )}
 
@@ -1108,16 +1112,16 @@ Example output:
                 {isSheet ? (<>
                     {sheetKgM2 > 0 && (
                     <div style={{ background: "rgba(45,106,79,0.10)", borderRadius: 8, padding: "7px 12px", border: "1px solid rgba(82,183,136,0.15)", display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>1 м²:</span>
-                      <span style={{ fontSize: 17, fontWeight: 700, color: "#52b788", fontFamily: "'JetBrains Mono',monospace" }}>{fmt(sheetKgM2)}</span>
-                      <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>кг</span>
+                      <span style={{ fontSize: 14, color: "rgba(255,255,255,0.4)" }}>1 м²:</span>
+                      <span style={{ fontSize: 19, fontWeight: 700, color: "#52b788", fontFamily: "'JetBrains Mono',monospace" }}>{fmt(sheetKgM2)}</span>
+                      <span style={{ fontSize: 14, color: "rgba(255,255,255,0.3)" }}>кг</span>
                     </div>
                     )}
                     {sheetWeight > 0 && (
                     <div style={{ background: "rgba(45,106,79,0.10)", borderRadius: 8, padding: "7px 12px", border: "1px solid rgba(82,183,136,0.15)", display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>1 лист:</span>
-                      <span style={{ fontSize: 17, fontWeight: 700, color: "#52b788", fontFamily: "'JetBrains Mono',monospace" }}>{fmt(sheetWeight)}</span>
-                      <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>кг</span>
+                      <span style={{ fontSize: 14, color: "rgba(255,255,255,0.4)" }}>1 лист:</span>
+                      <span style={{ fontSize: 19, fontWeight: 700, color: "#52b788", fontFamily: "'JetBrains Mono',monospace" }}>{fmt(sheetWeight)}</span>
+                      <span style={{ fontSize: 14, color: "rgba(255,255,255,0.3)" }}>кг</span>
                     </div>
                     )}
                     <div style={{ display: "grid", gridTemplateColumns: "100px 1fr", gap: 8 }}>
@@ -1159,7 +1163,7 @@ Example output:
                 {parseFloat(weight) > 0 && (parseInt(qty) || 1) > 1 && (
                   <div style={{ background: "rgba(45,106,79,0.15)", borderRadius: 8, padding: "7px 12px", border: "1px solid rgba(82,183,136,0.15)", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                     <span style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>{qty} × {fmt(parseFloat(weight))} =</span>
-                    <span style={{ fontSize: 17, fontWeight: 700, color: "#e8a838", fontFamily: "'JetBrains Mono',monospace" }}>{fmt(parseFloat(weight) * (parseInt(qty) || 1))} кг</span>
+                    <span style={{ fontSize: 19, fontWeight: 700, color: "#e8a838", fontFamily: "'JetBrains Mono',monospace" }}>{fmt(parseFloat(weight) * (parseInt(qty) || 1))} кг</span>
                   </div>
                 )}
                 </>)}
@@ -1171,10 +1175,10 @@ Example output:
           {hist.length > 0 && (
             <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)", padding: "12px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 6 }}>
-                <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "#52b788", fontFamily: "'Nunito',sans-serif" }}>Позиции ({hist.length})</span>
+                <span style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "#52b788", fontFamily: "'Nunito',sans-serif" }}>Позиции ({hist.length})</span>
                 <div style={{ display: "flex", gap: 5 }}>
-                  <button onClick={copyTSV} style={{ background: copied ? "rgba(82,183,136,0.2)" : "rgba(255,255,255,0.04)", border: "1px solid " + (copied ? "rgba(82,183,136,0.4)" : "rgba(255,255,255,0.07)"), borderRadius: 5, padding: "4px 10px", color: copied ? "#52b788" : "rgba(255,255,255,0.35)", fontSize: 10, cursor: "pointer", fontFamily: "'Nunito',sans-serif", fontWeight: 600 }}>{copied ? "✓" : "📋 Excel"}</button>
-                  <button onClick={() => setHist([])} style={{ background: "rgba(255,80,80,0.07)", border: "1px solid rgba(255,80,80,0.12)", borderRadius: 5, padding: "4px 10px", color: "#ff8080", fontSize: 10, cursor: "pointer", fontFamily: "'Nunito',sans-serif", fontWeight: 600 }}>Очистить</button>
+                  <button onClick={copyTSV} style={{ background: copied ? "rgba(82,183,136,0.2)" : "rgba(255,255,255,0.04)", border: "1px solid " + (copied ? "rgba(82,183,136,0.4)" : "rgba(255,255,255,0.07)"), borderRadius: 5, padding: "4px 10px", color: copied ? "#52b788" : "rgba(255,255,255,0.35)", fontSize: 12, cursor: "pointer", fontFamily: "'Nunito',sans-serif", fontWeight: 600 }}>{copied ? "✓" : "📋 Excel"}</button>
+                  <button onClick={() => setHist([])} style={{ background: "rgba(255,80,80,0.07)", border: "1px solid rgba(255,80,80,0.12)", borderRadius: 5, padding: "4px 10px", color: "#ff8080", fontSize: 12, cursor: "pointer", fontFamily: "'Nunito',sans-serif", fontWeight: 600 }}>Очистить</button>
                 </div>
               </div>
 
@@ -1185,13 +1189,13 @@ Example output:
                     <div key={e.id} onClick={() => loadH(e)} style={{ background: "rgba(255,255,255,0.02)", borderRadius: 8, padding: "10px 12px", border: "1px solid rgba(255,255,255,0.05)", cursor: "pointer", position: "relative" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                         <div>
-                          <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontFamily: "'JetBrains Mono',monospace", marginRight: 6 }}>{idx + 1}.</span>
-                          <span style={{ fontWeight: 700, fontSize: 13 }}>{e.prof}</span>
-                          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginLeft: 6 }}>{e.metal}</span>
+                          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.2)", fontFamily: "'JetBrains Mono',monospace", marginRight: 6 }}>{idx + 1}.</span>
+                          <span style={{ fontWeight: 700, fontSize: 15 }}>{e.prof}</span>
+                          <span style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", marginLeft: 6 }}>{e.metal}</span>
                         </div>
                         <button onClick={ev => { ev.stopPropagation(); rmH(e.id); }} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.2)", cursor: "pointer", fontSize: 18, padding: 4, marginTop: -4, marginRight: -4 }}>×</button>
                       </div>
-                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>
+                      <div style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>
                         {e.pk.map(k => e.params[k]).join("×")} мм · {e.len} м · {e.qty} шт
                       </div>
                       {e.desc && <div style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.desc}</div>}
@@ -1211,7 +1215,7 @@ Example output:
                 <div style={{ overflowX: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                     <thead><tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                      {["#","Профиль","Металл","Размеры","Длина","Шт","Вес, кг",""].map((h,i) => <th key={i} style={{ padding: "4px 6px", textAlign: "left", color: "rgba(255,255,255,0.28)", fontWeight: 600, fontFamily: "'Nunito',sans-serif", fontSize: 10 }}>{h}</th>)}
+                      {["#","Профиль","Металл","Размеры","Длина","Шт","Вес, кг",""].map((h,i) => <th key={i} style={{ padding: "4px 6px", textAlign: "left", color: "rgba(255,255,255,0.28)", fontWeight: 600, fontFamily: "'Nunito',sans-serif", fontSize: 12 }}>{h}</th>)}
                     </tr></thead>
                     <tbody>{hist.map((e, idx) => {
                       const isEd = editId === e.id;
@@ -1220,10 +1224,10 @@ Example output:
                       <tr key={e.id} onClick={() => { if (!isEd) loadH(e); }} style={{ borderBottom: "1px solid rgba(255,255,255,0.03)", cursor: "pointer", background: isEd ? "rgba(82,183,136,0.06)" : "transparent" }}
                         onMouseEnter={ev => { if (!isEd) ev.currentTarget.style.background = "rgba(82,183,136,0.08)"; }}
                         onMouseLeave={ev => { if (!isEd) ev.currentTarget.style.background = "transparent"; }}>
-                        <td style={{ padding: "5px 6px", color: "rgba(255,255,255,0.2)", fontSize: 10, fontFamily: "'JetBrains Mono',monospace" }}>{idx + 1}</td>
-                        <td style={{ padding: "5px 6px", fontWeight: 600, fontSize: 11 }}>{e.prof}</td>
-                        <td style={{ padding: "5px 6px", color: "rgba(255,255,255,0.45)", fontSize: 11 }}>{e.metal}</td>
-                        <td style={{ padding: "5px 6px", fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: "rgba(255,255,255,0.35)" }}>{e.pk.map(k => e.params[k]).join("×")}</td>
+                        <td style={{ padding: "5px 6px", color: "rgba(255,255,255,0.2)", fontSize: 12, fontFamily: "'JetBrains Mono',monospace" }}>{idx + 1}</td>
+                        <td style={{ padding: "5px 6px", fontWeight: 600, fontSize: 13 }}>{e.prof}</td>
+                        <td style={{ padding: "5px 6px", color: "rgba(255,255,255,0.45)", fontSize: 13 }}>{e.metal}</td>
+                        <td style={{ padding: "5px 6px", fontFamily: "'JetBrains Mono',monospace", fontSize: 13, color: "rgba(255,255,255,0.35)" }}>{e.pk.map(k => e.params[k]).join("×")}</td>
                         <td style={{ padding: "3px 6px" }}>{isEd
                           ? <input type="text" inputMode="decimal" value={editLen} onChange={ev => setEditLen(ev.target.value)} onKeyDown={ev => { if (ev.key === "Enter") saveEdit(e); if (ev.key === "Escape") setEditId(null); }} autoFocus style={editInp} />
                           : <span onDoubleClick={ev => startEdit(e, ev)} style={{ fontFamily: "'JetBrains Mono',monospace", cursor: "text" }}>{e.len}</span>
